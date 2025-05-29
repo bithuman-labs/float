@@ -1,11 +1,11 @@
-import torch, math
+import torch
+import math
 import torch.nn as nn
 import torch.nn.functional as F
+import time
+from typing import Generator as GeneratorType
 
 from torchdiffeq import odeint
-from transformers import Wav2Vec2Config
-from transformers.modeling_outputs import BaseModelOutput
-
 from models.wav2vec2 import Wav2VecModel
 from models.wav2vec2_ser import Wav2Vec2ForSpeechClassification
 
@@ -56,14 +56,27 @@ class FLOAT(BaseModel):
 	@torch.no_grad()
 	def decode_latent_into_image(self, s_r: torch.Tensor , s_r_feats: list, r_d: torch.Tensor) -> dict:
 		T = r_d.shape[1]
+		print(f"Decoding {T} frames")
 		d_hat = []
+		total_time = 0
 		for t in range(T):
+			tic = time.time()
 			s_r_d_t = s_r + r_d[:, t]
 			img_t, _ = self.motion_autoencoder.dec(s_r_d_t, alpha = None, feats = s_r_feats)
 			d_hat.append(img_t)
+			toc = time.time()
+			total_time += toc - tic
+		decode_fps = T / total_time
+		print(f"Decoding FPS: {decode_fps:.2f}, {1000 / decode_fps:.2f}ms/frame")
 		d_hat = torch.stack(d_hat, dim=1).squeeze()
 		return {'d_hat': d_hat}
-
+	
+	@torch.no_grad()
+	def decode_latent_single_image(self, s_r: torch.Tensor, s_r_feats: list, r_d_t: torch.Tensor) -> torch.Tensor:
+		s_r_d_t = s_r + r_d_t
+		img_t, _ = self.motion_autoencoder.dec(s_r_d_t, alpha = None, feats = s_r_feats)
+		return img_t
+	
 
 	######## Motion Sampling and Inference ########
 	@torch.no_grad()
@@ -75,14 +88,16 @@ class FLOAT(BaseModel):
 		e_cfg_scale: float = 1.0,
 		emo: str = None,
 		nfe: int = 10,
-		seed: int = None
-	) -> torch.Tensor:
+		seed: int = None,
+		prev_x: torch.Tensor | None = None,
+		prev_wa: torch.Tensor | None = None,
+	) -> GeneratorType[tuple[torch.Tensor, torch.Tensor], None, None]:
 
 		r_s, a = data['r_s'], data['a']
 		B = a.shape[0]
 
 		# make time 
-		time = torch.linspace(0, 1, self.opt.nfe, device=self.opt.rank)
+		ts = torch.linspace(0, 1, self.opt.nfe, device=self.opt.rank)
 		
 		# encoding audio first with whole audio
 		a = a.to(self.opt.rank)
@@ -96,9 +111,31 @@ class FLOAT(BaseModel):
 		else:
 			we = F.one_hot(torch.tensor(emo_idx, device = a.device), num_classes = self.opt.dim_e).unsqueeze(0).unsqueeze(0)
 
-		sample = []
+		# previous frames
+		if prev_x is None:
+			prev_x = torch.zeros(B, self.num_prev_frames, self.opt.dim_w).to(self.opt.rank)
+		else:
+			# padding with zeros or crop to self.num_prev_frames
+			if prev_x.shape[1] < self.num_prev_frames:
+				prev_x = F.pad(prev_x, (0, 0, self.num_prev_frames - prev_x.shape[1], 0), mode='constant', value=0)
+			else:
+				prev_x = prev_x[:, -self.num_prev_frames:]
+
+		if prev_wa is None:
+			prev_wa = torch.zeros(B, self.num_prev_frames, self.opt.dim_w).to(self.opt.rank)
+		else:
+			if prev_wa.shape[1] < self.num_prev_frames:
+				prev_wa = F.pad(prev_wa, (0, 0, self.num_prev_frames - prev_wa.shape[1], 0), mode='constant', value=0)
+			else:
+				prev_wa = prev_wa[:, -self.num_prev_frames:]
+
+		prev_x_t = prev_x
+		prev_wa_t = prev_wa
+
 		# sampleing chunk by chunk
+		num_frames = 0
 		for t in range(0, int(math.ceil(T / self.num_frames_for_clip))):
+			tic = time.time()
 			if self.opt.fix_noise_seed:
 				seed = self.opt.seed if seed is None else seed	
 				g = torch.Generator(self.opt.rank)
@@ -107,13 +144,6 @@ class FLOAT(BaseModel):
 			else:
 				x0 = torch.randn(B, self.num_frames_for_clip, self.opt.dim_w, device = self.opt.rank)
 
-			if t == 0: # should define the previous
-				prev_x_t = torch.zeros(B, self.num_prev_frames, self.opt.dim_w).to(self.opt.rank)
-				prev_wa_t = torch.zeros(B, self.num_prev_frames, self.opt.dim_w).to(self.opt.rank)
-			else:
-				prev_x_t = sample_t[:, -self.num_prev_frames:]
-				prev_wa_t = wa_t[:, -self.num_prev_frames:]
-			
 			wa_t = wa[:, t * self.num_frames_for_clip: (t+1)*self.num_frames_for_clip]
 
 			if wa_t.shape[1] < self.num_frames_for_clip: # padding by replicate
@@ -137,11 +167,26 @@ class FLOAT(BaseModel):
 				return out_current
 
 			# solve ODE
-			trajectory_t = odeint(sample_chunk, x0, time, **self.odeint_kwargs)
+			trajectory_t = odeint(sample_chunk, x0, ts, **self.odeint_kwargs)
 			sample_t = trajectory_t[-1]
-			sample.append(sample_t)
-		sample = torch.cat(sample, dim=1)[:, :T]
-		return sample
+
+			for i in range(sample_t.shape[1]):
+				yield sample_t[:, i], wa_t[:, i]
+				num_frames += 1
+
+				if num_frames >= T:
+					return
+
+			prev_x_t = sample_t[:, -self.num_prev_frames:]
+			prev_wa_t = wa_t[:, -self.num_prev_frames:]
+
+
+		# 	sample.append(sample_t)
+		# 	toc = time.time()
+		# 	print(f"Time taken for chunk {t}: {(toc - tic) * 1000:.2f}ms")
+
+		# sample = torch.cat(sample, dim=1)[:, :T]
+		# return sample, prev_x_t, prev_wa_t
 
 	@torch.no_grad()
 	def inference(
@@ -153,7 +198,7 @@ class FLOAT(BaseModel):
 		emo			= None,
 		nfe			= 10,
 		seed		= None,
-	) -> dict:
+	) -> GeneratorType[tuple[torch.Tensor, torch.Tensor, torch.Tensor], None, None]:
 
 		s, a = data['s'], data['a']
 		s_r, r_s_lambda, s_r_feats = self.encode_image_into_latent(s.to(self.opt.rank))
@@ -168,10 +213,9 @@ class FLOAT(BaseModel):
 		if r_cfg_scale is None: r_cfg_scale = self.opt.r_cfg_scale
 		if e_cfg_scale is None: e_cfg_scale = self.opt.e_cfg_scale
 
-		sample = self.sample(data, a_cfg_scale = a_cfg_scale, r_cfg_scale = r_cfg_scale, e_cfg_scale = e_cfg_scale, emo = emo, nfe = nfe, seed = seed)
-		data_out = self.decode_latent_into_image(s_r = s_r, s_r_feats = s_r_feats, r_d = sample)
-		return data_out
-
+		for sample, wa in self.sample(data, a_cfg_scale = a_cfg_scale, r_cfg_scale = r_cfg_scale, e_cfg_scale = e_cfg_scale, emo = emo, nfe = nfe, seed = seed):
+			img = self.decode_latent_single_image(s_r = s_r, s_r_feats = s_r_feats, r_d_t = sample)
+			yield img, sample, wa
 
 
 
