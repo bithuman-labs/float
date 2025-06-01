@@ -25,7 +25,6 @@ from queue import Queue, Empty
 from dataclasses import dataclass, field
 from transformers import Wav2Vec2FeatureExtractor
 from livekit.agents.voice.avatar import VideoGenerator, AudioSegmentEnd
-from livekit.agents.utils.audio import AudioByteStream
 from collections.abc import AsyncGenerator
 
 from models.float.FLOAT import FLOAT
@@ -67,23 +66,22 @@ class GeneratedFrame:
 
 
 class ListBuffer:
-    def __init__(self, keep_n: int = 10):
+    def __init__(self, num_prev_frames: int = 10):
         self.buffer: list[GeneratedFrame] = []
         self._lock = threading.Lock()
         self._ready = threading.Event()
-        self.keep_n = keep_n
-        self._last_n_data = deque(maxlen=keep_n)
 
-    def append(self, item: GeneratedFrame) -> None:
+        self._last_fetched = deque(maxlen=num_prev_frames)
+        self._last_pushed = deque(maxlen=num_prev_frames)
+
+    def push(self, item: GeneratedFrame) -> None:
         self.buffer.append(item)
-        self._last_n_data.append(item)
+        self._last_pushed.append(item)
         self._ready.set()
 
-    def get(
-        self, *, timeout: float | None = None, keep_left: int = 0
-    ) -> GeneratedFrame | None:
+    def get(self, *, timeout: float | None = None) -> GeneratedFrame | None:
         start = time.time()
-        while self.size <= keep_left:
+        while len(self.buffer) == 0:
             if timeout is not None:
                 timeout -= time.time() - start
                 if timeout <= 0:
@@ -92,11 +90,13 @@ class ListBuffer:
             self._ready.clear()
 
         with self._lock:
-            return self.buffer.pop(0)
+            item = self.buffer.pop(0)
+            self._last_fetched.append(item)
+            return item
 
-    def truncate(self, idle_only: bool = True, keep_left: int = 10) -> None:
+    def truncate(self, only_idle_frames: bool = True, keep_left: int = 10) -> None:
         with self._lock:
-            if idle_only:
+            if only_idle_frames:
                 last_non_idle: int | None = None
                 for i in reversed(range(len(self.buffer))):
                     if not self.buffer[i].idle:
@@ -105,17 +105,10 @@ class ListBuffer:
                 if last_non_idle is not None:
                     keep_left = max(keep_left, last_non_idle + 1)
 
-            print(
-                "truncate",
-                keep_left,
-                "buffer",
-                len(self.buffer),
-                "left",
-                len(self.buffer[:keep_left]),
-            )
             if len(self.buffer) > keep_left:
                 self.buffer = self.buffer[:keep_left]
-                self._last_n_data = deque(self.buffer, maxlen=self.keep_n)
+                self._last_pushed = self._last_fetched.copy()
+                self._last_pushed.extend(self.buffer)
 
     @property
     def size(self) -> int:
@@ -123,7 +116,7 @@ class ListBuffer:
 
     @property
     def last_n_data(self) -> list[GeneratedFrame]:
-        return list(self._last_n_data)
+        return list(self._last_pushed)
 
 
 class DataProcessor:
@@ -364,14 +357,20 @@ class InferenceAgent:
 
         segment_ended = True
         global_index = 0
+        first_frame_delay = 0.2  # 200ms
+        delay_momentum = 0.5
         while not stop_event.is_set():
             is_last_segment = False
             try:
-                chunk = audio_queue.get(timeout=0.1)
+                chunk = audio_queue.get(timeout=0.01)
 
+                keep_left = max(
+                    2, np.ceil(first_frame_delay * self.opt.fps).astype(int)
+                )
                 if chunk.interrupt:
                     # TODO: dynamic truncate keep_left
-                    output_buffer.truncate(idle_only=False)
+                    output_buffer.truncate(only_idle_frames=False, keep_left=keep_left)
+                    print(f"truncate and keep {keep_left} frames")
 
                 if chunk.flush:
                     is_last_segment = True
@@ -379,18 +378,19 @@ class InferenceAgent:
                 if chunk.audio is not None:
                     if segment_ended:
                         # clear idle frames and generate a new segment
-                        output_buffer.truncate(idle_only=True)
+                        output_buffer.truncate(
+                            only_idle_frames=True, keep_left=keep_left
+                        )
+                        print(f"truncate and keep {keep_left} frames")
 
                     audio_buffer = np.concatenate([audio_buffer, chunk.audio])
                     segment_ended = False
                     is_idle = False
 
             except Empty:
-                print("output_buffer.size", output_buffer.size)
                 if output_buffer.size > 20:
                     continue
                 if not segment_ended or len(audio_buffer) > 0:
-                    print("audio input timout before flush")
                     chunk = AudioAndControl(flush=True)  # raise a warning
                 else:
                     chunk = AudioAndControl(
@@ -399,7 +399,6 @@ class InferenceAgent:
                     )
                     audio_buffer = chunk.audio  # fill the buffer with zeros
                     is_idle = True
-                    print("generate idle audio")
 
             # get the audio chunk for inference
             audio_inference: np.ndarray | None = None
@@ -407,21 +406,15 @@ class InferenceAgent:
                 segment_ended = True
                 audio_inference = audio_buffer
                 audio_buffer = np.zeros(0, dtype=np.float32)
-                print("audio_inference from flush", audio_inference.shape)
             elif len(audio_buffer) >= sample_per_clip:
                 audio_inference = audio_buffer[:sample_per_clip]
                 audio_buffer = audio_buffer[sample_per_clip:]
-                print("audio_inference from buffer", audio_inference.shape)
 
             if audio_inference is None:
                 continue
 
             # previous frames
             prev_sample, prev_wa = _get_prev_data(output_buffer.last_n_data)
-            if prev_sample is not None:
-                print("prev_sample", prev_sample.shape, prev_wa.shape)
-            else:
-                print("prev_sample is None")
 
             # inference
             data_inference = data.copy()
@@ -430,10 +423,10 @@ class InferenceAgent:
             ).unsqueeze(0)
 
             num_frames = int(len(audio_inference) / sample_per_frame)
-            print("audio_inference", audio_inference.shape, "num_frames", num_frames)
             if num_frames <= 0:
                 continue
 
+            tic = time.perf_counter()
             for i, (sample, wa) in enumerate(
                 self.G.sample(
                     data=data_inference,
@@ -453,7 +446,7 @@ class InferenceAgent:
                 img = img.permute(1, 2, 0).clamp(-1, 1).cpu().numpy()
                 img = ((img + 1) / 2 * 255).astype(np.uint8)
 
-                output_buffer.append(
+                output_buffer.push(
                     GeneratedFrame(
                         index=global_index,
                         img=img,
@@ -468,6 +461,12 @@ class InferenceAgent:
                         _wa=wa,
                     )
                 )
+                if i == 0:
+                    delay = time.perf_counter() - tic
+                    first_frame_delay = (
+                        first_frame_delay * (1 - delay_momentum)
+                        + delay * delay_momentum
+                    )
                 global_index += 1
                 if i >= num_frames - 1:
                     break
@@ -488,7 +487,7 @@ class FloatVideoGen(VideoGenerator):
 
         self._loop = loop or asyncio.get_event_loop()
         self.input_queue = Queue[AudioAndControl]()
-        self.output_buffer = ListBuffer(keep_n=opt.num_prev_frames)
+        self.output_buffer = ListBuffer(num_prev_frames=opt.num_prev_frames)
         self.output_queue = asyncio.Queue[GeneratedFrame](maxsize=2)
         self.stop_event = threading.Event()
         self.executor = ThreadPoolExecutor(max_workers=2)
@@ -642,7 +641,7 @@ class FloatVideoGen(VideoGenerator):
 
 def main(agent: InferenceAgent, ref_image_path: str, audio_path: str, opt):
     audio_queue = Queue()
-    output_buffer = ListBuffer(keep_n=opt.num_prev_frames)
+    output_buffer = ListBuffer(num_prev_frames=opt.num_prev_frames)
     stop_event = threading.Event()
     frames: list[GeneratedFrame] = []
 
