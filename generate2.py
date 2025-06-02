@@ -17,7 +17,7 @@ import albumentations as A
 import albumentations.pytorch.transforms as A_pytorch
 import threading
 import asyncio
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, TimeoutError
 from collections import deque
 from tqdm import tqdm
 from typing import Literal, AsyncIterator
@@ -473,19 +473,12 @@ class InferenceAgent:
 
 
 class FloatVideoGen(VideoGenerator):
-    def __init__(
-        self,
-        opt,
-        ref_image_path: str,
-        *,
-        loop: asyncio.AbstractEventLoop | None = None,
-    ):
+    def __init__(self, opt, *, loop: asyncio.AbstractEventLoop | None = None):
         super().__init__()
         self.agent = InferenceAgent(opt)
-        self.ref_image_path = ref_image_path
         self.opt = opt
 
-        self._loop = loop or asyncio.get_event_loop()
+        self._loop = loop
         self.input_queue = Queue[AudioAndControl]()
         self.output_buffer = ListBuffer(num_prev_frames=opt.num_prev_frames)
         self.output_queue = asyncio.Queue[GeneratedFrame](maxsize=2)
@@ -496,12 +489,14 @@ class FloatVideoGen(VideoGenerator):
         self.reader_thread: threading.Thread | None = None
         self.resampler: rtc.AudioResampler | None = None
 
-    def start(self):
+    def start(self, *, ref_image: str):
         # Start inference thread
+        self._loop = self._loop or asyncio.get_event_loop()
+
         self.inference_thread = threading.Thread(
             target=self.agent.run_inference_stream,
             args=(
-                self.ref_image_path,
+                ref_image,
                 self.input_queue,
                 self.output_buffer,
                 self.stop_event,

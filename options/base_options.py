@@ -1,10 +1,10 @@
 import os, argparse, json
 
 class BaseOptions():
-	def parse(self):
+	def parse(self, argv: list[str] | None = None):
 		parser = argparse.ArgumentParser()
 		self.parser = self.initialize(parser)
-		self.opt = self.parser.parse_args()
+		self.opt = self.parser.parse_args(argv)
 		return self.opt
 
 	def initialize(self, parser):

@@ -29,8 +29,8 @@ async def main(room: rtc.Room, opt: argparse.Namespace):
             audio_sample_rate=16000,
             audio_channels=1,
         )
-        video_gen = FloatVideoGen(opt, ref_image_path=opt.ref_path)
-        video_gen.start()
+        video_gen = FloatVideoGen(opt)
+        video_gen.start(ref_image=opt.ref_path)
         runner = AvatarRunner(
             room,
             audio_recv=DataStreamAudioReceiver(room),
