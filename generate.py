@@ -2,47 +2,43 @@
 Inference Stage 2
 """
 
-import os
-import torch
-import cv2
-import torchvision
-import subprocess
-import librosa
+import asyncio
 import datetime
+import os
+import subprocess
 import tempfile
-import face_alignment
+import threading
 import time
-import numpy as np
+from collections import deque
+from collections.abc import AsyncGenerator
+from concurrent.futures import ThreadPoolExecutor, TimeoutError
+from dataclasses import dataclass, field
+from queue import Empty, Queue
+from typing import AsyncIterator, Literal
+
 import albumentations as A
 import albumentations.pytorch.transforms as A_pytorch
-import threading
-from collections import deque
+import cv2
+import face_alignment
+import librosa
+import numpy as np
+import torch
+import torchvision
+from livekit import rtc
+from livekit.agents.voice.avatar import AudioSegmentEnd, VideoGenerator
+from moviepy import AudioArrayClip, ImageSequenceClip
 from tqdm import tqdm
-from typing import Literal
-
-from queue import Queue, Empty
-from dataclasses import dataclass
 from transformers import Wav2Vec2FeatureExtractor
 
 from models.float.FLOAT import FLOAT
 from options.base_options import BaseOptions
-from moviepy import ImageSequenceClip, AudioArrayClip
-
-
-# class ClearBufferSentinel:
-#     pass
-
-
-# class AudioFlushSentinel:
-#     pass
-
 
 Emotion = Literal["angry", "disgust", "fear", "happy", "neutral", "sad", "surprise"]
 
 
 @dataclass
 class AudioAndControl:
-    audio: np.ndarray | None = None  # 16kHz audio fp32
+    audio: np.ndarray | None = field(default=None, repr=False)  # 16kHz audio fp32
     flush: bool = False
     interrupt: bool = False
 
@@ -55,28 +51,29 @@ class GeneratedFrame:
     img: np.ndarray  # uint8 [H, W, 3]
     audio: np.ndarray  # 16kHz audio float32
     idle: bool  # whether the frame is idle
+    audio_segment_ended: bool  # whether the audio segment is ended
 
     _sample: torch.Tensor
     _wa: torch.Tensor
 
 
 class ListBuffer:
-    def __init__(self, keep_n: int = 10):
+    def __init__(self, num_prev_frames: int = 10):
         self.buffer: list[GeneratedFrame] = []
         self._lock = threading.Lock()
         self._ready = threading.Event()
-        self.keep_n = keep_n
-        self._last_n_data = deque(maxlen=keep_n)
 
-    def append(self, item: GeneratedFrame) -> None:
+        self._last_fetched = deque(maxlen=num_prev_frames)
+        self._last_pushed = deque(maxlen=num_prev_frames)
+
+    def push(self, item: GeneratedFrame) -> None:
         self.buffer.append(item)
+        self._last_pushed.append(item)
         self._ready.set()
 
-    def get(
-        self, *, timeout: float | None = None, keep_left: int = 0
-    ) -> GeneratedFrame | None:
+    def get(self, *, timeout: float | None = None) -> GeneratedFrame | None:
         start = time.time()
-        while self.size <= keep_left:
+        while len(self.buffer) == 0:
             if timeout is not None:
                 timeout -= time.time() - start
                 if timeout <= 0:
@@ -86,12 +83,12 @@ class ListBuffer:
 
         with self._lock:
             item = self.buffer.pop(0)
-            self._last_n_data.append(item)
+            self._last_fetched.append(item)
             return item
 
-    def truncate(self, idle_only: bool = True, keep_left: int = 10) -> None:
+    def truncate(self, only_idle_frames: bool = True, keep_left: int = 10) -> None:
         with self._lock:
-            if idle_only:
+            if only_idle_frames:
                 last_non_idle: int | None = None
                 for i in reversed(range(len(self.buffer))):
                     if not self.buffer[i].idle:
@@ -100,7 +97,10 @@ class ListBuffer:
                 if last_non_idle is not None:
                     keep_left = max(keep_left, last_non_idle + 1)
 
-            self.buffer = self.buffer[:keep_left]
+            if len(self.buffer) > keep_left:
+                self.buffer = self.buffer[:keep_left]
+                self._last_pushed = self._last_fetched.copy()
+                self._last_pushed.extend(self.buffer)
 
     @property
     def size(self) -> int:
@@ -108,7 +108,7 @@ class ListBuffer:
 
     @property
     def last_n_data(self) -> list[GeneratedFrame]:
-        return list(self._last_n_data)
+        return list(self._last_pushed)
 
 
 class DataProcessor:
@@ -349,17 +349,31 @@ class InferenceAgent:
 
         segment_ended = True
         global_index = 0
+        first_frame_delay = 0.2  # 200ms
+        delay_momentum = 0.5
         while not stop_event.is_set():
+            is_last_segment = False
             try:
                 chunk = audio_queue.get(timeout=0.01)
 
+                keep_left = max(
+                    2, np.ceil(first_frame_delay * self.opt.fps).astype(int)
+                )
                 if chunk.interrupt:
                     # TODO: dynamic truncate keep_left
-                    output_buffer.truncate(idle_only=False)
+                    output_buffer.truncate(only_idle_frames=False, keep_left=keep_left)
+                    print(f"truncate and keep {keep_left} frames")
+
+                if chunk.flush:
+                    is_last_segment = True
 
                 if chunk.audio is not None:
                     if segment_ended:
-                        output_buffer.truncate(idle_only=True)
+                        # clear idle frames and generate a new segment
+                        output_buffer.truncate(
+                            only_idle_frames=True, keep_left=keep_left
+                        )
+                        print(f"truncate and keep {keep_left} frames")
 
                     audio_buffer = np.concatenate([audio_buffer, chunk.audio])
                     segment_ended = False
@@ -401,7 +415,10 @@ class InferenceAgent:
             ).unsqueeze(0)
 
             num_frames = int(len(audio_inference) / sample_per_frame)
-            # print("audio_inference", audio_inference.shape, "num_frames", num_frames)
+            if num_frames <= 0:
+                continue
+
+            tic = time.perf_counter()
             for i, (sample, wa) in enumerate(
                 self.G.sample(
                     data=data_inference,
@@ -421,7 +438,7 @@ class InferenceAgent:
                 img = img.permute(1, 2, 0).clamp(-1, 1).cpu().numpy()
                 img = ((img + 1) / 2 * 255).astype(np.uint8)
 
-                output_buffer.append(
+                output_buffer.push(
                     GeneratedFrame(
                         index=global_index,
                         img=img,
@@ -429,18 +446,189 @@ class InferenceAgent:
                             i * sample_per_frame : (i + 1) * sample_per_frame
                         ],
                         idle=is_idle,
+                        audio_segment_ended=is_last_segment
+                        if i == num_frames - 1
+                        else False,
                         _sample=sample,
                         _wa=wa,
                     )
                 )
+                if i == 0:
+                    delay = time.perf_counter() - tic
+                    first_frame_delay = (
+                        first_frame_delay * (1 - delay_momentum)
+                        + delay * delay_momentum
+                    )
                 global_index += 1
                 if i >= num_frames - 1:
                     break
 
 
+class FloatVideoGen(VideoGenerator):
+    def __init__(self, opt, *, loop: asyncio.AbstractEventLoop | None = None):
+        super().__init__()
+        self.agent = InferenceAgent(opt)
+        self.opt = opt
+
+        self._loop = loop
+        self.input_queue = Queue[AudioAndControl]()
+        self.output_buffer = ListBuffer(num_prev_frames=opt.num_prev_frames)
+        self.output_queue = asyncio.Queue[GeneratedFrame](maxsize=2)
+        self.stop_event = threading.Event()
+        self.executor = ThreadPoolExecutor(max_workers=2)
+
+        self.inference_thread: threading.Thread | None = None
+        self.reader_thread: threading.Thread | None = None
+        self.resampler: rtc.AudioResampler | None = None
+
+    def start(self, *, ref_image: str):
+        # Start inference thread
+        self._loop = self._loop or asyncio.get_event_loop()
+
+        self.inference_thread = threading.Thread(
+            target=self.agent.run_inference_stream,
+            args=(
+                ref_image,
+                self.input_queue,
+                self.output_buffer,
+                self.stop_event,
+            ),
+            kwargs=dict(
+                a_cfg_scale=self.opt.a_cfg_scale,
+                r_cfg_scale=self.opt.r_cfg_scale,
+                e_cfg_scale=self.opt.e_cfg_scale,
+                talking_emotion=None,
+                idle_emotion=self.opt.emo,
+                nfe=self.opt.nfe,
+                no_crop=self.opt.no_crop,
+                seed=self.opt.seed,
+            ),
+        )
+        self.inference_thread.start()
+
+        # Start reader thread
+        self.reader_thread = threading.Thread(target=self._reader_loop)
+        self.reader_thread.start()
+
+    def _reader_loop(self):
+        """Thread that reads from output_buffer and puts into async_queue"""
+        while not self.stop_event.is_set():
+            frame = self.output_buffer.get(timeout=0.1)
+            if frame is None:
+                continue
+            fut = asyncio.run_coroutine_threadsafe(
+                self.output_queue.put(frame), self._loop
+            )
+            while not self.stop_event.is_set():
+                try:
+                    fut.result(timeout=0.5)
+                    break
+                except TimeoutError:
+                    continue
+
+    async def push_audio(self, frame: rtc.AudioFrame | AudioSegmentEnd) -> None:
+        async def _push_impl(frame: rtc.AudioFrame | AudioSegmentEnd) -> None:
+            if isinstance(frame, AudioSegmentEnd):
+                control = AudioAndControl(flush=True)
+            else:
+                audio_data = np.frombuffer(frame.data, dtype=np.int16)
+                audio_data = np.clip(
+                    audio_data.astype(np.float32) / np.iinfo(np.int16).max, -1, 1
+                )
+                control = AudioAndControl(audio=audio_data)
+            await self._loop.run_in_executor(
+                self.executor, self.input_queue.put, control
+            )
+
+        async for f in self._resample_audio(frame):
+            await _push_impl(f)
+
+    async def clear_buffer(self) -> None:
+        def _clear_buffer():
+            while not self.input_queue.empty():
+                self.input_queue.get()
+            self.input_queue.put(AudioAndControl(interrupt=True))
+
+        await self._loop.run_in_executor(self.executor, _clear_buffer)
+
+    async def _resample_audio(
+        self, frame: rtc.AudioFrame | AudioSegmentEnd
+    ) -> AsyncGenerator[rtc.AudioFrame | AudioSegmentEnd, None]:
+        if isinstance(frame, AudioSegmentEnd):
+            if self.resampler:
+                for f in self.resampler.flush():
+                    yield f
+            yield frame
+            self.resampler = None
+            return
+
+        if self.resampler is None and frame.sample_rate != self.opt.sampling_rate:
+            self.resampler = rtc.AudioResampler(
+                input_rate=frame.sample_rate, output_rate=self.opt.sampling_rate
+            )
+        if self.resampler:
+            for f in self.resampler.push(frame):
+                yield f
+        else:
+            yield frame
+
+    def __aiter__(
+        self,
+    ) -> AsyncIterator[rtc.VideoFrame | rtc.AudioFrame | AudioSegmentEnd]:
+        return self._iter_impl()
+
+    async def _iter_impl(
+        self,
+    ) -> AsyncIterator[rtc.VideoFrame | rtc.AudioFrame | AudioSegmentEnd]:
+        while not self.stop_event.is_set():
+            try:
+                frame: GeneratedFrame = await self.output_queue.get()
+                # Convert frame to video frame
+                h, w = frame.img.shape[:2]
+                rgba_img = np.zeros((h, w, 4), dtype=np.uint8)
+                rgba_img[:, :, :3] = frame.img
+                rgba_img[:, :, 3] = 255
+                video_frame = rtc.VideoFrame(
+                    data=rgba_img.tobytes(),
+                    type=rtc.VideoBufferType.RGBA,
+                    width=w,
+                    height=h,
+                )
+                yield video_frame
+
+                # Convert audio to audio frame
+                if frame.audio is not None and not frame.idle:
+                    audio_data = (
+                        np.clip(frame.audio, -1, 1) * np.iinfo(np.int16).max
+                    ).astype(np.int16)
+                    audio_frame = rtc.AudioFrame(
+                        data=audio_data.tobytes(),
+                        sample_rate=self.opt.sampling_rate,
+                        num_channels=1,
+                        samples_per_channel=len(audio_data),
+                    )
+                    yield audio_frame
+
+                if frame.audio_segment_ended:
+                    yield AudioSegmentEnd()
+
+            except asyncio.QueueEmpty:
+                continue
+
+    def close(self):
+        print("closing video_gen")
+        self.stop_event.set()
+        if self.inference_thread:
+            self.inference_thread.join()
+        if self.reader_thread:
+            self.reader_thread.join()
+        self.executor.shutdown(wait=True)
+        print("video_gen closed")
+
+
 def main(agent: InferenceAgent, ref_image_path: str, audio_path: str, opt):
     audio_queue = Queue()
-    output_buffer = ListBuffer(keep_n=opt.num_prev_frames)
+    output_buffer = ListBuffer(num_prev_frames=opt.num_prev_frames)
     stop_event = threading.Event()
     frames: list[GeneratedFrame] = []
 

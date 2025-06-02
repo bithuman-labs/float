@@ -1,20 +1,18 @@
-import asyncio
-import logging
-import sys
-from typing import Optional
 import argparse
+import asyncio
 import json
+import logging
 
+from dotenv import load_dotenv
 from livekit import rtc
+from livekit.agents import JobContext, JobProcess, WorkerOptions, cli
 from livekit.agents.voice.avatar import (
     AvatarOptions,
     AvatarRunner,
     DataStreamAudioReceiver,
 )
-from generate2 import FloatVideoGen, BaseOptions
-from livekit.agents import JobContext, JobProcess, WorkerOptions, cli
 
-from dotenv import load_dotenv
+from generate import BaseOptions, FloatVideoGen
 
 load_dotenv()
 
@@ -51,18 +49,6 @@ async def entrypoint(ctx: JobContext):
         options=avatar_options,
     )
     await runner.start()
-
-    # Set up disconnect handler
-    async def handle_disconnect(participant: rtc.RemoteParticipant):
-        if participant.kind == rtc.ParticipantKind.PARTICIPANT_KIND_AGENT:
-            logging.info(
-                "Agent %s disconnected, stopping worker...", participant.identity
-            )
-
-    ctx.room.on(
-        "participant_disconnected",
-        lambda p: asyncio.create_task(handle_disconnect(p)),
-    )
 
     async def on_shutdown():
         logging.info("Shutting down avatar worker...")
