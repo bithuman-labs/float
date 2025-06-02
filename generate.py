@@ -28,7 +28,6 @@ import torch
 import torchvision
 from livekit import rtc
 from livekit.agents.voice.avatar import AudioSegmentEnd, VideoGenerator
-from moviepy import AudioArrayClip, ImageSequenceClip
 from tqdm import tqdm
 from transformers import Wav2Vec2FeatureExtractor
 
@@ -737,6 +736,8 @@ def write_video(
         sampling_rate: Audio sampling rate
         video_path: Output video file path
     """
+    from moviepy import AudioArrayClip, ImageSequenceClip
+
     # Create video clip from images
     video_clip = ImageSequenceClip(images, fps=fps)
 

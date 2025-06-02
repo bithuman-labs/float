@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  avatar-worker:
+    build: .
+    image: float-avatar:latest
+    gpus: all
+    env_file:
+      - .env
+    restart: unless-stopped
+
+  dispatcher:
+    image: float-avatar:latest
+    command: ["python", "dispatcher.py"]
+    ports:
+      - "8089:8089"
+    env_file:
+      - .env
+    restart: unless-stopped
+    depends_on:
+      - avatar-worker

@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "float-stream-avatar"
 dynamic = ["version"]
 description = "Float Stream Avatar"
-requires-python = ">=3.9"
+requires-python = ">=3.10,<3.11"
 dependencies = [
     "pyyaml",
     "opencv-python",
@@ -24,6 +24,10 @@ dependencies = [
     "av==12.0.0",
     "numpy<2",
     "livekit-agents~=1.0",
+    "moviepy==2.2.1",
+    "uvicorn",
+    "fastapi",
+    "python-dotenv",
 ]
 
 [tool.setuptools]
