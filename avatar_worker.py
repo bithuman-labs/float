@@ -1,10 +1,8 @@
 import argparse
-import asyncio
 import json
 import logging
 
 from dotenv import load_dotenv
-from livekit import rtc
 from livekit.agents import JobContext, JobProcess, WorkerOptions, cli
 from livekit.agents.voice.avatar import (
     AvatarOptions,
@@ -18,7 +16,7 @@ load_dotenv()
 
 logger = logging.getLogger("avatar-example")
 
-REF_IMAGE_PATH = "/home/longc/data/code/float/assets/Snipaste_2025-03-24_17-16-02.png"
+REF_IMAGE_PATH = "assets/Snipaste_2025-03-24_17-16-02.png"
 
 
 async def entrypoint(ctx: JobContext):

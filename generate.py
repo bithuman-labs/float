@@ -16,6 +16,8 @@ from dataclasses import dataclass, field
 from queue import Empty, Queue
 from typing import AsyncIterator, Literal
 
+os.environ["NO_ALBUMENTATIONS_UPDATE"] = "1"
+
 import albumentations as A
 import albumentations.pytorch.transforms as A_pytorch
 import cv2
@@ -30,8 +32,8 @@ from moviepy import AudioArrayClip, ImageSequenceClip
 from tqdm import tqdm
 from transformers import Wav2Vec2FeatureExtractor
 
+from models.base_options import BaseOptions
 from models.float.FLOAT import FLOAT
-from options.base_options import BaseOptions
 
 Emotion = Literal["angry", "disgust", "fear", "happy", "neutral", "sad", "surprise"]
 
@@ -709,7 +711,13 @@ def main(agent: InferenceAgent, ref_image_path: str, audio_path: str, opt):
     print("audio_duration", audios.shape[0] / agent.opt.sampling_rate)
 
     # write mp4 using moviepy with audio
-    write_video(images, audios, agent.opt.fps, agent.opt.sampling_rate, "test.mp4")
+    write_video(
+        images,
+        audios,
+        agent.opt.fps,
+        agent.opt.sampling_rate,
+        os.path.join(opt.res_dir, "test.mp4"),
+    )
 
 
 def write_video(
