@@ -687,11 +687,9 @@ def main(agent: InferenceAgent, ref_image_path: str, audio_path: str, opt):
     while len(frames) < 25 * 1:
         time.sleep(0.2)
 
-    _send_audio("assets/sample.wav", emotion="surprise")
-    time.sleep(1)
-    _send_audio(audio_path, interrupt=True, emotion="angry")
+    _send_audio(audio_path, interrupt=True)
 
-    while len(frames) < 25 * 40:
+    while len(frames) < 25 * 30:
         time.sleep(1)
 
     stop_event.set()
@@ -710,12 +708,13 @@ def main(agent: InferenceAgent, ref_image_path: str, audio_path: str, opt):
     print("audio_duration", audios.shape[0] / agent.opt.sampling_rate)
 
     # write mp4 using moviepy with audio
+    name = os.path.splitext(os.path.basename(ref_image_path))[0]
     write_video(
         images,
         audios,
         agent.opt.fps,
         agent.opt.sampling_rate,
-        os.path.join(opt.res_dir, "test.mp4"),
+        os.path.join(opt.res_dir, f"{name}.mp4"),
     )
 
 
