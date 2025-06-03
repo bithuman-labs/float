@@ -3,6 +3,7 @@ import json
 import logging
 
 from dotenv import load_dotenv
+from livekit import rtc
 from livekit.agents import JobContext, JobProcess, WorkerOptions, cli
 from livekit.agents.voice.avatar import (
     AvatarOptions,
@@ -19,6 +20,10 @@ logger = logging.getLogger("avatar-example")
 REF_IMAGE_PATH = "assets/Snipaste_2025-03-24_17-16-02.png"
 
 
+def text_stream_handler(reader: rtc.TextStreamReader, participant: str):
+    pass
+
+
 async def entrypoint(ctx: JobContext):
     """Main application logic for the avatar worker"""
 
@@ -29,6 +34,8 @@ async def entrypoint(ctx: JobContext):
     if not ctx._info.url or not ctx._info.token:
         raise ValueError("url or token is not set in metadata")
     await ctx.connect()
+
+    ctx.room.register_text_stream_handler("lk.transcription", text_stream_handler)
 
     # Initialize and start worker
     avatar_options = AvatarOptions(
@@ -42,7 +49,7 @@ async def entrypoint(ctx: JobContext):
     video_gen.start(ref_image=REF_IMAGE_PATH)  # TODO: upload image
     runner = AvatarRunner(
         ctx.room,
-        audio_recv=DataStreamAudioReceiver(ctx.room),
+        audio_recv=DataStreamAudioReceiver(ctx.room, frame_size_ms=2000),
         video_gen=video_gen,
         options=avatar_options,
     )
