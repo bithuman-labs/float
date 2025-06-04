@@ -586,12 +586,9 @@ class FloatVideoGen(VideoGenerator):
                 frame: GeneratedFrame = await self.output_queue.get()
                 # Convert frame to video frame
                 h, w = frame.img.shape[:2]
-                rgba_img = np.zeros((h, w, 4), dtype=np.uint8)
-                rgba_img[:, :, :3] = frame.img
-                rgba_img[:, :, 3] = 255
                 video_frame = rtc.VideoFrame(
-                    data=rgba_img.tobytes(),
-                    type=rtc.VideoBufferType.RGBA,
+                    data=frame.img.tobytes(),
+                    type=rtc.VideoBufferType.RGB24,
                     width=w,
                     height=h,
                 )
