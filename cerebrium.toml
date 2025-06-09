@@ -10,7 +10,7 @@ include = [
     "generate.py",
     "models/*.py",
     "cerebrium_endpoint/*.py",
-    "assets/avatar-example.png",
+    "assets/avatar-example.jpg",
 ]
 
 

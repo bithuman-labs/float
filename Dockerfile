@@ -28,7 +28,7 @@ RUN apt-get update && apt-get install -y git && \
 
 # copy models, checkpoints, and assets
 COPY models/ ./models/
-COPY assets/avatar-example.png ./assets/avatar-example.png
+COPY assets/avatar-example.jpg ./assets/avatar-example.jpg
 COPY cerebrium_endpoint/ ./cerebrium_endpoint/
 COPY avatar_worker.py dispatcher.py generate.py ./
 

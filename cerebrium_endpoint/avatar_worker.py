@@ -27,7 +27,7 @@ load_dotenv()
 ROOM = os.getenv("LIVEKIT_ROOM")
 WS_URL = os.getenv("LIVEKIT_WS_URL")
 TOKEN = os.getenv("LIVEKIT_TOKEN")
-REF_IMAGE_PATH = os.getenv("REF_IMAGE_PATH", os.path.join(THIS_DIR, "../assets/avatar-example.png"))
+REF_IMAGE_PATH = os.getenv("REF_IMAGE_PATH", os.path.join(THIS_DIR, "../assets/avatar-example.jpg"))
 
 logger = logging.getLogger(f"avatar-{ROOM}")
 
