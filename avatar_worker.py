@@ -17,7 +17,7 @@ load_dotenv()
 
 logger = logging.getLogger("avatar-example")
 
-REF_IMAGE_PATH = "assets/Snipaste_2025-03-24_17-16-02.png"
+REF_IMAGE_PATH = "assets/s9.jpg"
 
 
 def text_stream_handler(reader: rtc.TextStreamReader, participant: str):
@@ -70,12 +70,6 @@ class InferenceOptions(BaseOptions):
 
     def initialize(self, parser: argparse.ArgumentParser):
         super().initialize(parser)
-        parser.add_argument(
-            "--ref_path",
-            default="assets/Snipaste_2025-03-24_17-16-02.png",
-            type=str,
-            help="ref",
-        )
         parser.add_argument(
             "--emo",
             default=None,

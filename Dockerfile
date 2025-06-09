@@ -28,8 +28,6 @@ RUN apt-get update && apt-get install -y git && \
 
 # copy models, checkpoints, and assets
 COPY models/ ./models/
-COPY checkpoints/ ./checkpoints/
-COPY assets/ ./assets/
 COPY avatar_worker.py dispatcher.py generate.py ./
 
 RUN python avatar_worker.py download-files

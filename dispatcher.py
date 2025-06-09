@@ -29,6 +29,7 @@ async def create_explicit_dispatch(conn_info: AvatarConnectionInfo):
         api.CreateAgentDispatchRequest(
             agent_name="avatar_worker",
             room=conn_info.room_name,
+            # TODO: add image url
             metadata=json.dumps({"url": conn_info.url, "token": conn_info.token}),
         )
     )
@@ -43,6 +44,7 @@ app = FastAPI(title="Avatar Dispatcher")
 async def handle_launch(connection_info: AvatarConnectionInfo) -> dict:
     """Handle request to launch an avatar worker"""
     try:
+        # TODO: accept uploading image
         await create_explicit_dispatch(connection_info)
         return {
             "status": "success",

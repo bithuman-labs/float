@@ -8,6 +8,9 @@ services:
     env_file:
       - .env
     restart: unless-stopped
+    volumes:
+      - ./checkpoints:/app/checkpoints
+      - ./assets:/app/assets
 
   dispatcher:
     image: float-avatar:latest
