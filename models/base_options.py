@@ -1,5 +1,7 @@
 import os, argparse, json
 
+checkpoint_base = os.getenv("FLOAT_CHECKPOINT_PATH", "./checkpoints")
+
 class BaseOptions():
 	def parse(self, argv: list[str] | None = None):
 		parser = argparse.ArgumentParser()
@@ -8,7 +10,12 @@ class BaseOptions():
 		return self.opt
 
 	def initialize(self, parser):
-		parser.add_argument('--pretrained_dir', type=str, default='./checkpoints')
+		parser.add_argument(
+            "--ckpt_path",
+            default=os.path.join(checkpoint_base, "float.pth"),
+            type=str,
+            help="checkpoint path",
+        )
 		parser.add_argument('--seed', default=15, type=int)
 		parser.add_argument('--fix_noise_seed', action='store_true')
 
@@ -21,8 +28,8 @@ class BaseOptions():
 		parser.add_argument('--sampling_rate', type=int, default=16000)
 		parser.add_argument('--audio_marcing', type=int, default=2, help='number of adjacent frames. For value v, t -> [t-v, ..., t, ..., t+v]')        
 		parser.add_argument('--wav2vec_sec', default=2, type=float, help='window length L (seconds), 50 frames')
-		parser.add_argument('--wav2vec_model_path', default='./checkpoints/wav2vec2-base-960h')
-		parser.add_argument('--audio2emotion_path', default='./checkpoints/wav2vec-english-speech-emotion-recognition')
+		parser.add_argument('--wav2vec_model_path', default=os.path.join(checkpoint_base, "wav2vec2-base-960h"))
+		parser.add_argument('--audio2emotion_path', default=os.path.join(checkpoint_base, "wav2vec-english-speech-emotion-recognition"))
 		parser.add_argument('--attention_window', default=2, type=int, help='attention window size, e.g., if 1, attend frames of t-1, t, t+1 for frame t')
 
 		parser.add_argument('--only_last_features', action='store_true')

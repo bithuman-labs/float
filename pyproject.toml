@@ -28,6 +28,7 @@ dependencies = [
     "uvicorn",
     "fastapi",
     "python-dotenv",
+    "python-multipart>=0.0.20",
 ]
 
 [tool.setuptools]

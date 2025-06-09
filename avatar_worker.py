@@ -78,12 +78,6 @@ class InferenceOptions(BaseOptions):
             choices=["angry", "disgust", "fear", "happy", "neutral", "sad", "surprise"],
         )
         parser.add_argument("--no_crop", action="store_true", help="not using crop")
-        parser.add_argument(
-            "--ckpt_path",
-            default="checkpoints/float.pth",
-            type=str,
-            help="checkpoint path",
-        )
         return parser
 
 

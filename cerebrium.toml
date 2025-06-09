@@ -1,0 +1,32 @@
+[cerebrium.deployment]
+name = "float-agents"
+include = [
+    "pyproject.toml",
+    "uv.lock",
+    "predownload.py",
+    "Dockerfile",
+    "avatar_worker.py",
+    "dispatcher.py",
+    "generate.py",
+    "models/*.py",
+    "cerebrium_endpoint/*.py",
+    "assets/avatar-example.png",
+]
+
+
+[cerebrium.hardware]
+cpu = 8
+memory = 12.0
+compute = "AMPERE_A10"
+
+[cerebrium.scaling]
+min_replicas = 0           # Minimum running instances
+max_replicas = 3           # Maximum concurrent instances
+cooldown = 60              # Cooldown period in seconds
+replica_concurrency = 1    # The maximum number of requests each replica of an app can accept
+
+[cerebrium.runtime.custom]
+port = 8089
+healthcheck_endpoint = "/health"
+readycheck_endpoint = "/ready"
+dockerfile_path = "./Dockerfile"

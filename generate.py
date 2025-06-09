@@ -178,6 +178,8 @@ class DataProcessor:
         return crop_img
 
     def default_img_loader(self, path) -> np.ndarray:
+        if not os.path.exists(path):
+            raise FileNotFoundError(f"Image file not found: {path}")
         img = cv2.imread(path)
         return cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
@@ -773,12 +775,6 @@ class InferenceOptions(BaseOptions):
         parser.add_argument("--no_crop", action="store_true", help="not using crop")
         parser.add_argument(
             "--res_video_path", default=None, type=str, help="res video path"
-        )
-        parser.add_argument(
-            "--ckpt_path",
-            default="/home/nvadmin/workspace/taek/float-pytorch/checkpoints/float.pth",
-            type=str,
-            help="checkpoint path",
         )
         parser.add_argument(
             "--res_dir", default="./results", type=str, help="result dir"

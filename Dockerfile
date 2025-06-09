@@ -28,8 +28,13 @@ RUN apt-get update && apt-get install -y git && \
 
 # copy models, checkpoints, and assets
 COPY models/ ./models/
+COPY assets/avatar-example.png ./assets/avatar-example.png
+COPY cerebrium_endpoint/ ./cerebrium_endpoint/
 COPY avatar_worker.py dispatcher.py generate.py ./
 
-RUN python avatar_worker.py download-files
+# RUN python avatar_worker.py download-files
 
-CMD ["python", "avatar_worker.py", "start"] 
+
+# CMD ["python", "avatar_worker.py", "start"]
+EXPOSE 8089
+CMD ["python", "cerebrium_endpoint/dispatcher.py", "--host", "0.0.0.0", "--port", "8089"]
