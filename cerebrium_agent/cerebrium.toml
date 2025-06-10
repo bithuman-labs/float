@@ -1,0 +1,25 @@
+[cerebrium.deployment]
+name = "float-agents"
+python_version = "3.13"
+docker_base_image_url = "debian:bookworm-slim"
+disable_auth = false
+include = ['agent.py', 'requirements.txt', 'Dockerfile', 'avatar.jpg']
+exclude = ['.*']
+
+[cerebrium.hardware]
+cpu = 2
+memory = 4.0
+compute = "CPU"
+
+[cerebrium.scaling]
+min_replicas = 1
+max_replicas = 3
+cooldown = 30
+replica_concurrency = 2
+response_grace_period = 900
+scaling_metric = "cpu_utilization"
+scaling_target = 70
+
+[cerebrium.runtime.custom]
+port = 8081
+dockerfile_path = "./Dockerfile"

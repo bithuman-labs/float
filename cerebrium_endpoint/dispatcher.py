@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
+import aiohttp
 import uvicorn
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from livekit.agents.cli.log import setup_logging
@@ -109,6 +110,74 @@ class WorkerLauncher:
             await asyncio.sleep(1)
 
 
+async def save_image_to_temp_file(
+    image_data: bytes, room_name: str, filename: str, source: str
+) -> str:
+    """Create a temporary file and write image data to it"""
+    # Create temporary file
+    temp_filepath = tempfile.NamedTemporaryFile(
+        delete=False, prefix=f"{room_name}_", suffix=f"_{filename}"
+    ).name
+
+    # Write image data to temp file
+    with open(temp_filepath, "wb") as f:
+        f.write(image_data)
+
+    logger.info(
+        f"{source} avatar image to: {temp_filepath}, size: {len(image_data)} bytes"
+    )
+    return temp_filepath
+
+
+async def save_uploaded_image(avatar_image: UploadFile, room_name: str) -> str:
+    """Save uploaded image to temporary file and return the filename"""
+    try:
+        # Use the uploaded filename directly
+        filename = os.path.basename(avatar_image.filename) or "avatar.jpg"
+
+        # Read image data and save to temp file
+        image_data = await avatar_image.read()
+        return await save_image_to_temp_file(image_data, room_name, filename, "Saved")
+
+    except Exception as e:
+        logger.error(f"Failed to save avatar image: {e}")
+        raise HTTPException(
+            status_code=400, detail=f"Failed to save uploaded image: {str(e)}"
+        )
+
+
+async def download_image_from_url(avatar_image_url: str, room_name: str) -> str:
+    """Download image from URL and save to temporary file, return the filename"""
+    try:
+        # Download image from URL
+        async with aiohttp.ClientSession() as session:
+            async with session.get(avatar_image_url) as response:
+                if response.status == 200:
+                    # Extract filename from URL or use default
+                    url_filename = (
+                        os.path.basename(avatar_image_url.split("?")[0]) or "avatar.jpg"
+                    )
+
+                    # Download data and save to temp file
+                    image_data = await response.read()
+                    return await save_image_to_temp_file(
+                        image_data, room_name, url_filename, "Downloaded"
+                    )
+                else:
+                    error_msg = (
+                        f"Failed to download image from URL: HTTP {response.status}"
+                    )
+                    logger.error(error_msg)
+                    raise HTTPException(status_code=400, detail=error_msg)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to download avatar image from URL: {e}")
+        raise HTTPException(
+            status_code=400, detail=f"Failed to download image from URL: {str(e)}"
+        )
+
+
 launcher = WorkerLauncher()
 
 
@@ -129,43 +198,29 @@ async def handle_launch(
     room_name: str = Form(...),
     avatar_id: Optional[str] = Form(None),
     avatar_image: Optional[UploadFile] = File(None),
+    avatar_image_url: Optional[str] = Form(None),
 ) -> dict:
     """Handle request to launch an avatar worker"""
 
     avatar_image_filename: str | None = None
 
-    # Process avatar image if provided - write to temp file
-    if avatar_image:
-        try:
-            # Use the uploaded filename directly
-            filename = os.path.basename(avatar_image.filename) or "avatar.jpg"
-            avatar_image_filename = tempfile.NamedTemporaryFile(
-                delete=False, prefix=f"{room_name}_", suffix=f"_{filename}"
-            ).name
-
-            # Write image data to temp file
-            image_data = await avatar_image.read()
-            with open(avatar_image_filename, "wb") as f:
-                f.write(image_data)
-
-            logger.info(
-                f"Saved avatar image to: {avatar_image_filename}, size: {len(image_data)} bytes"
+    try:
+        # Process avatar image if provided (will raise HTTPException on failure)
+        if avatar_image:
+            avatar_image_filename = await save_uploaded_image(avatar_image, room_name)
+        elif avatar_image_url:
+            avatar_image_filename = await download_image_from_url(
+                avatar_image_url, room_name
             )
 
-        except Exception as e:
-            logger.error(f"Failed to save avatar image: {e}")
-            # Continue without image if there's an error
-            avatar_image_filename = None
+        connection_info = AvatarConnectionInfo(
+            room_name=room_name,
+            url=livekit_url,
+            token=livekit_token,
+            avatar_id=avatar_id,
+            avatar_image_filename=avatar_image_filename,
+        )
 
-    connection_info = AvatarConnectionInfo(
-        room_name=room_name,
-        url=livekit_url,
-        token=livekit_token,
-        avatar_id=avatar_id,
-        avatar_image_filename=avatar_image_filename,
-    )
-
-    try:
         worker = await launcher.launch_worker(connection_info)
         logger.info(f"Launched avatar worker for room: {connection_info.room_name}")
         tic = time.time()
@@ -179,6 +234,9 @@ async def handle_launch(
             "message": f"Avatar worker launched for room: {connection_info.room_name}",
             "duration": toc - tic,
         }
+    except HTTPException:
+        # Re-raise HTTP exceptions (from image processing failures)
+        raise
     except Exception as e:
         logger.error(f"Error handling launch request: {e}")
         raise HTTPException(

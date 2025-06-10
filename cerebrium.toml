@@ -1,5 +1,5 @@
 [cerebrium.deployment]
-name = "float-agents"
+name = "float-agents-generator"
 include = [
     "pyproject.toml",
     "uv.lock",
