@@ -6,6 +6,7 @@ import sys
 
 from dotenv import load_dotenv
 from livekit import rtc
+from livekit.agents import utils
 from livekit.agents.cli.log import setup_logging
 from livekit.agents.types import ATTRIBUTE_PUBLISH_ON_BEHALF
 from livekit.agents.voice.avatar import (
@@ -19,7 +20,7 @@ sys.path.insert(0, os.path.dirname(THIS_DIR))
 
 from generate import BaseOptions, FloatVideoGen  # noqa: E402
 
-setup_logging("INFO", devmode=True, console=True)
+setup_logging("INFO", devmode=True, console=False)
 
 load_dotenv()
 
@@ -27,7 +28,9 @@ load_dotenv()
 ROOM = os.getenv("LIVEKIT_ROOM")
 WS_URL = os.getenv("LIVEKIT_WS_URL")
 TOKEN = os.getenv("LIVEKIT_TOKEN")
-REF_IMAGE_PATH = os.getenv("REF_IMAGE_PATH", os.path.join(THIS_DIR, "../assets/avatar-example.jpg"))
+REF_IMAGE_PATH = os.getenv(
+    "REF_IMAGE_PATH", os.path.join(THIS_DIR, "../assets/avatar-example.jpg")
+)
 
 logger = logging.getLogger(f"avatar-{ROOM}")
 
@@ -36,35 +39,11 @@ def text_stream_handler(reader: rtc.TextStreamReader, participant: str):
     pass
 
 
-def shutdown(runner: AvatarRunner, stop: asyncio.Event):
-    logger.info("Shutting down avatar worker...")
-    asyncio.create_task(runner.aclose())
-    stop.set()
-    logger.info("Avatar worker shut down")
-
-
-async def entrypoint(
-    ws_url: str, token: str, video_gen: FloatVideoGen, stop_event: asyncio.Event
-):
+async def start_avatar(room: rtc.Room, video_gen: FloatVideoGen) -> AvatarRunner:
     """Main application logic for the avatar worker"""
-
-    room = rtc.Room()
-    await room.connect(ws_url, token)
-
     on_behalf_of = room.local_participant.attributes.get(ATTRIBUTE_PUBLISH_ON_BEHALF)
     if not on_behalf_of:
         raise ValueError("on_behalf_of is not set")
-
-    @room.on("participant_disconnected")
-    def on_participant_disconnected(participant: rtc.RemoteParticipant):
-        logger.info(f"Participant {participant.identity} disconnected")
-        if participant.identity == on_behalf_of:
-            shutdown(runner, stop_event)
-
-    @room.on("disconnected")
-    def on_disconnected(reason: rtc.DisconnectReason):
-        logger.info(f"Room disconnected: {reason}")
-        shutdown(runner, stop_event)
 
     room.register_text_stream_handler("lk.transcription", text_stream_handler)
 
@@ -76,7 +55,7 @@ async def entrypoint(
         audio_sample_rate=16000,
         audio_channels=1,
     )
-    video_gen.start(ref_image=REF_IMAGE_PATH)  # TODO: upload image
+    video_gen.start(ref_image=REF_IMAGE_PATH)
     runner = AvatarRunner(
         room,
         audio_recv=DataStreamAudioReceiver(room, frame_size_ms=2000),
@@ -84,6 +63,7 @@ async def entrypoint(
         options=avatar_options,
     )
     await asyncio.wait_for(runner.start(), timeout=120)
+    return runner
 
 
 class InferenceOptions(BaseOptions):
@@ -116,7 +96,38 @@ async def main():
     logger.info("video gen model loaded")
 
     stop_event = asyncio.Event()
-    await entrypoint(WS_URL, TOKEN, video_gen, stop_event)
+
+    room = rtc.Room()
+    await room.connect(WS_URL, TOKEN)
+    on_behalf_of = room.local_participant.attributes.get(ATTRIBUTE_PUBLISH_ON_BEHALF)
+
+    runner = await start_avatar(room, video_gen)
+    close_runner_task: asyncio.Task[None] | None = None
+
+    @room.on("participant_disconnected")
+    def on_participant_disconnected(participant: rtc.RemoteParticipant):
+        nonlocal close_runner_task
+
+        logger.info(f"Participant {participant.identity} disconnected")
+        if participant.identity == on_behalf_of:
+            logger.info("Agent disconnected, shutting down avatar worker...")
+            if not close_runner_task:
+                close_runner_task = asyncio.create_task(runner.aclose())
+            stop_event.set()
+
+    @room.on("disconnected")
+    def on_disconnected(reason: rtc.DisconnectReason):
+        nonlocal close_runner_task
+
+        logger.info(f"Room disconnected: {reason}")
+        if not close_runner_task:
+            close_runner_task = asyncio.create_task(runner.aclose())
+        stop_event.set()
+
+    # make sure the agent is connected, otherwise stop the worker
+    await asyncio.wait_for(
+        utils.wait_for_participant(room, identity=on_behalf_of), timeout=60
+    )
 
     await stop_event.wait()
 

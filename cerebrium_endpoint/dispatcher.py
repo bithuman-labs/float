@@ -14,7 +14,7 @@ import uvicorn
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from livekit.agents.cli.log import setup_logging
 
-setup_logging("INFO", devmode=True, console=True)
+setup_logging("INFO", devmode=True, console=False)
 
 logger = logging.getLogger("avatar-dispatcher")
 
