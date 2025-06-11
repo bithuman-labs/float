@@ -18,8 +18,8 @@ logger.setLevel(logging.INFO)
 
 load_dotenv()
 
-DEFAULT_AVATAR_IMAGE = os.path.join(os.path.dirname(__file__), "avatar.jpg")
-
+base_dir = os.getenv("BASE_DIR", "/persistent-storage/images")
+DEFAULT_AVATAR_IMAGE = os.path.join(base_dir, "avatar.jpg")
 
 async def entrypoint(ctx: JobContext):
     await ctx.connect()
