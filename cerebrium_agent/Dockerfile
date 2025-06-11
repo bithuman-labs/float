@@ -21,7 +21,6 @@ ENV PATH="/app/venv/bin:$PATH"
 COPY requirements.txt .
 RUN uv pip install -r requirements.txt && \
     uv pip uninstall livekit-plugins-bithuman && \
-    GIT_LFS_SKIP_SMUDGE=1 uv pip install git+https://github.com/longcw/agents@longc/cloud-bithuman-avatar#subdirectory=livekit-plugins/livekit-plugins-openai  && \
     GIT_LFS_SKIP_SMUDGE=1 uv pip install git+https://github.com/longcw/agents@longc/cloud-bithuman-avatar#subdirectory=livekit-plugins/livekit-plugins-bithuman  && \
     uv pip uninstall opencv-python && \
     uv pip install opencv-python-headless --no-deps
