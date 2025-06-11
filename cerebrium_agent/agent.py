@@ -21,16 +21,6 @@ load_dotenv()
 DEFAULT_AVATAR_IMAGE = os.path.join(os.path.dirname(__file__), "avatar.jpg")
 
 
-lk_ws_url = os.getenv("LIVEKIT_URL_FLOAT_AGENT")
-lk_api_key = os.getenv("LIVEKIT_API_KEY_FLOAT_AGENT")
-lk_api_secret = os.getenv("LIVEKIT_API_SECRET_FLOAT_AGENT")
-bithuman_api_url = os.getenv(
-    "BITHUMAN_API_URL_FLOAT_AGENT",
-    "https://api.cortex.cerebrium.ai/v4/p-5398b08f/float-agents-generator/launch?async=true",
-)
-bithuman_api_secret = os.getenv("BITHUMAN_API_SECRET_FLOAT_AGENT")
-
-
 async def entrypoint(ctx: JobContext):
     await ctx.connect()
 
@@ -47,15 +37,10 @@ async def entrypoint(ctx: JobContext):
     bithuman_avatar = bithuman.AvatarSession(
         mode="cloud",
         avatar_image=avatar_image,
-        api_url=bithuman_api_url,
-        api_secret=bithuman_api_secret,
     )
     await bithuman_avatar.start(
         session,
         room=ctx.room,
-        livekit_url=lk_ws_url,
-        livekit_api_key=lk_api_key,
-        livekit_api_secret=lk_api_secret,
     )
 
     await session.start(
@@ -65,12 +50,4 @@ async def entrypoint(ctx: JobContext):
 
 
 if __name__ == "__main__":
-    cli.run_app(
-        WorkerOptions(
-            entrypoint_fnc=entrypoint,
-            worker_type=WorkerType.ROOM,
-            ws_url=lk_ws_url,
-            api_key=lk_api_key,
-            api_secret=lk_api_secret,
-        )
-    )
+    cli.run_app(WorkerOptions(entrypoint_fnc=entrypoint, worker_type=WorkerType.ROOM))
