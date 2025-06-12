@@ -42,7 +42,7 @@ class WorkerLauncher:
     class WorkerInfo:
         room_name: str
         process: subprocess.Popen
-        done_fut: asyncio.Future[None]
+        done_fut: asyncio.Future[int]
 
     def __init__(self):
         self.workers: dict[str, WorkerLauncher.WorkerInfo] = {}
@@ -106,7 +106,7 @@ class WorkerLauncher:
                         f"Worker for room {worker.room_name} exited with code {worker.process.returncode}"  # noqa: E501
                     )
                     self.workers.pop(worker.room_name)
-                    worker.done_fut.set_result(None)
+                    worker.done_fut.set_result(worker.process.returncode)
             await asyncio.sleep(1)
 
 
@@ -224,7 +224,11 @@ async def handle_launch(
         worker = await launcher.launch_worker(connection_info)
         logger.info(f"Launched avatar worker for room: {connection_info.room_name}")
         tic = time.time()
-        await worker.done_fut
+        return_code = await worker.done_fut
+        if return_code != 0:
+            raise HTTPException(
+                status_code=500, detail=f"Avatar worker exited with code {return_code}"
+            )
         toc = time.time()
         logger.info(
             f"[{connection_info.room_name}] Avatar worker exited after {toc - tic:.2f} seconds"

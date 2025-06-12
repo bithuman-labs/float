@@ -125,13 +125,21 @@ async def main():
         stop_event.set()
 
     # make sure the agent is connected, otherwise stop the worker
-    await asyncio.wait_for(
-        utils.wait_for_participant(room, identity=on_behalf_of), timeout=60
-    )
+    try:
+        await asyncio.wait_for(
+            utils.wait_for_participant(room, identity=on_behalf_of), timeout=60
+        )
+    except asyncio.TimeoutError:
+        logger.error("Agent not connected, shutting down avatar worker...")
+        if not close_runner_task:
+            close_runner_task = asyncio.create_task(runner.aclose())
+        stop_event.set()
+        return 1
 
     await stop_event.wait()
+    return 0
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
-    os._exit(0)
+    return_code = asyncio.run(main())
+    os._exit(return_code)
