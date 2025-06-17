@@ -1,0 +1,6 @@
+bithuman==0.5.15
+livekit-agents[bithuman]==1.1.1
+uvicorn
+fastapi
+dotenv
+python-multipart
