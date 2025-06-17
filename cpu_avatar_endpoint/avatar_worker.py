@@ -53,7 +53,7 @@ async def start_avatar(room: rtc.Room, video_gen: BithumanGenerator) -> AvatarRu
 
     runner = AvatarRunner(
         room,
-        audio_recv=DataStreamAudioReceiver(room, frame_size_ms=100),
+        audio_recv=DataStreamAudioReceiver(room, frame_size_ms=10),
         video_gen=video_gen,
         options=avatar_options,
     )
