@@ -530,6 +530,7 @@ class FloatVideoGen(VideoGenerator):
                     continue
 
     async def push_audio(self, frame: rtc.AudioFrame | AudioSegmentEnd) -> None:
+        # TODO: support emotion
         async def _push_impl(frame: rtc.AudioFrame | AudioSegmentEnd) -> None:
             if isinstance(frame, AudioSegmentEnd):
                 control = AudioAndControl(flush=True)
@@ -671,7 +672,7 @@ def main(agent: InferenceAgent, ref_image_path: str, audio_path: str, opt):
             a_cfg_scale=opt.a_cfg_scale,
             r_cfg_scale=opt.r_cfg_scale,
             e_cfg_scale=opt.e_cfg_scale,
-            talking_emotion=None,
+            talking_emotion=opt.aud_emo,
             idle_emotion=opt.emo,
             nfe=opt.nfe,
             no_crop=opt.no_crop,
@@ -708,6 +709,8 @@ def main(agent: InferenceAgent, ref_image_path: str, audio_path: str, opt):
 
     # write mp4 using moviepy with audio
     name = os.path.splitext(os.path.basename(ref_image_path))[0]
+    if opt.aud_emo:
+        name += f"-{opt.aud_emo}-{opt.emo}"
     write_video(
         images,
         audios,
@@ -765,6 +768,13 @@ class InferenceOptions(BaseOptions):
         super().initialize(parser)
         parser.add_argument("--ref_path", default=None, type=str, help="ref")
         parser.add_argument("--aud_path", default=None, type=str, help="audio")
+        parser.add_argument(
+            "--aud_emo",
+            default=None,
+            type=str,
+            choices=["angry", "disgust", "fear", "happy", "neutral", "sad", "surprise"],
+            help="audio emotion",
+        )
         parser.add_argument(
             "--emo",
             default=None,
