@@ -21,10 +21,10 @@ COPY predownload.py ./
 RUN python predownload.py
 
 # temporally install livekit-agents from source
-RUN apt-get update && apt-get install -y git && \
-    uv pip uninstall livekit-agents && \
-    GIT_LFS_SKIP_SMUDGE=1 uv pip install git+https://github.com/livekit/agents@main#subdirectory=livekit-agents && \
-    rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y wget && \
+    rm -rf /var/lib/apt/lists/* && \
+    wget -O /usr/local/bin/dumb-init https://github.com/Yelp/dumb-init/releases/download/v1.2.5/dumb-init_1.2.5_x86_64 && \
+    chmod +x /usr/local/bin/dumb-init
 
 # copy models, checkpoints, and assets
 COPY models/ ./models/
@@ -34,7 +34,7 @@ COPY avatar_worker.py dispatcher.py generate.py ./
 
 # RUN python avatar_worker.py download-files
 
-
 # CMD ["python", "avatar_worker.py", "start"]
 EXPOSE 8089
+ENTRYPOINT ["/usr/local/bin/dumb-init", "--"]
 CMD ["python", "cerebrium_endpoint/dispatcher.py", "--host", "0.0.0.0", "--port", "8089"]
