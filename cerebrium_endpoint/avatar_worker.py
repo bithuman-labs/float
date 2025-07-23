@@ -141,5 +141,9 @@ async def main():
 
 
 if __name__ == "__main__":
-    return_code = asyncio.run(main())
+    try:
+        return_code = asyncio.run(main())
+    except Exception:
+        return_code = -1
+
     os._exit(return_code)
