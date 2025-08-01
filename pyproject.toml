@@ -23,7 +23,7 @@ dependencies = [
     "face_alignment==1.4.1",
     "av==12.0.0",
     "numpy<2",
-    "livekit-agents==1.2.1",
+    "livekit-agents==1.2.2",
     "moviepy==2.2.1",
     "uvicorn",
     "fastapi",
