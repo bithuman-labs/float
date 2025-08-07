@@ -1,11 +1,13 @@
 [cerebrium.deployment]
-name = "cpu-avatar-service"
+name = "neon-essence-agents"
+python_version = "3.11"
+docker_base_image_url = "python:3.11-bookworm"
 include = [
-    "Dockerfile",
     "avatar_worker.py",
-    "dispatcher.py",
+    "main.py",
     "requirements.txt",
 ]
+exclude = [".*"]
 
 
 [cerebrium.hardware]
@@ -21,8 +23,14 @@ response_grace_period = 43200  # Maximum request lifespan ensuring graceful exit
 scaling_target = 100
 scaling_metric = "concurrency_utilization"
 
-[cerebrium.runtime.custom]
-port = 8089
-healthcheck_endpoint = "/health"
-readycheck_endpoint = "/ready"
-dockerfile_path = "./Dockerfile"
+[cerebrium.dependencies.pip]
+opencv-python-headless = "latest"
+
+[cerebrium.dependencies.apt]
+libatomic1 = "latest"
+git = "latest"
+
+# Functions in main.py will automatically become API endpoints:
+# - /launch
+# - /health  
+# - /ready

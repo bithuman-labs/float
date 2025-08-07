@@ -5,14 +5,11 @@ import subprocess
 import sys
 import tempfile
 import time
-from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
-import uvicorn
 from dotenv import load_dotenv
-from fastapi import FastAPI, Form, HTTPException
 from livekit.agents.cli.log import setup_logging
 
 load_dotenv()
@@ -95,7 +92,7 @@ class WorkerLauncher:
             return self.workers[room_name]
         except Exception as e:
             logger.exception(f"Failed to launch worker: {e}")
-            raise HTTPException(status_code=500, detail=str(e))  # noqa: B904
+            return {"status": "error", "message": str(e)}
 
     async def _monitor(self) -> None:
         while True:
@@ -128,28 +125,25 @@ async def save_image_to_temp_file(
     return temp_filepath
 
 
+# Initialize launcher globally for Cerebrium
 launcher = WorkerLauncher()
 
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    await launcher.start()
-    yield
-    launcher.close()
+# Note: launcher.start() will be called automatically when the first function is invoked
+# This is handled by Cerebrium's runtime
 
 
-app = FastAPI(title="Avatar Dispatcher", lifespan=lifespan)
-
-
-@app.post("/launch")
-async def handle_launch(
-    livekit_url: str = Form(...),
-    livekit_token: str = Form(...),
-    room_name: str = Form(...),
-    avatar_id: str = Form(None),
+async def launch(
+    livekit_url: str,
+    livekit_token: str,
+    room_name: str,
+    avatar_id: Optional[str] = None,
 ) -> dict:
     """Handle request to launch an avatar worker"""
     logger.info(f"Launching avatar worker for room: {room_name}")
+    
+    # Ensure launcher is started
+    await launcher.start()
+    
     try:
         # check if the imx model exists
         if not avatar_id:
@@ -159,9 +153,10 @@ async def handle_launch(
             imx_model_path = list(Path(AGENT_MODEL_ROOT).glob(f"{avatar_id}/*.imx"))[0]
         except IndexError:
             logger.error(f"Avatar model {avatar_id} not found from {AGENT_MODEL_ROOT}")
-            raise HTTPException(
-                status_code=400, detail=f"Avatar model {avatar_id} not found"
-            )
+            return {
+                "status": "error",
+                "message": f"Avatar model {avatar_id} not found"
+            }
 
         connection_info = AvatarConnectionInfo(
             room_name=room_name,
@@ -175,9 +170,10 @@ async def handle_launch(
         tic = time.time()
         return_code = await worker.done_fut
         if return_code != 0:
-            raise HTTPException(
-                status_code=500, detail=f"Avatar worker exited with code {return_code}"
-            )
+            return {
+                "status": "error",
+                "message": f"Avatar worker exited with code {return_code}"
+            }
         toc = time.time()
         logger.info(
             f"[{connection_info.room_name}] Avatar worker exited after {toc - tic:.2f} seconds"
@@ -187,39 +183,22 @@ async def handle_launch(
             "message": f"Avatar worker launched for room: {connection_info.room_name}",
             "duration": toc - tic,
         }
-    except HTTPException:
-        # Re-raise HTTP exceptions (from image processing failures)
-        raise
+
     except Exception as e:
         logger.error(f"Error handling launch request: {e}")
-        raise HTTPException(
-            status_code=500, detail=f"Failed to launch worker: {str(e)}"
-        )  # noqa: B904
+        return {
+            "status": "error",
+            "message": f"Failed to launch worker: {str(e)}"
+        }
     finally:
         pass
 
 
-@app.get("/health")
-async def handle_health() -> dict:
+async def health() -> dict:
+    """Health check endpoint"""
     return {"status": "ok"}
 
 
-@app.get("/ready")
-async def handle_ready() -> dict:
+async def ready() -> dict:
+    """Ready check endpoint"""
     return {"status": "ok"}
-
-
-def main():
-    import argparse
-
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--host", default="0.0.0.0", type=str, help="Host to run server on"
-    )
-    parser.add_argument("--port", default=8089, type=int, help="Port to run server on")
-    args = parser.parse_args()
-    uvicorn.run(app, host=args.host, port=args.port)
-
-
-if __name__ == "__main__":
-    main()
