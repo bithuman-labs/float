@@ -125,11 +125,8 @@ async def save_image_to_temp_file(
     return temp_filepath
 
 
-# Initialize launcher globally for Cerebrium
-launcher = WorkerLauncher()
-
-# Note: launcher.start() will be called automatically when the first function is invoked
-# This is handled by Cerebrium's runtime
+# Global launcher instance will be initialized on first use
+launcher = None
 
 
 async def launch(
@@ -141,8 +138,11 @@ async def launch(
     """Handle request to launch an avatar worker"""
     logger.info(f"Launching avatar worker for room: {room_name}")
     
-    # Ensure launcher is started
-    await launcher.start()
+    # Initialize launcher on first use
+    global launcher
+    if launcher is None:
+        launcher = WorkerLauncher()
+        await launcher.start()
     
     try:
         # check if the imx model exists
