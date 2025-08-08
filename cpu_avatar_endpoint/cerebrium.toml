@@ -1,12 +1,13 @@
 [cerebrium.deployment]
-name = "cpu-avatar-service"
+name = "neon-essence-agents"
+python_version = "3.13"
 include = [
-    "Dockerfile",
     "avatar_worker.py",
-    "dispatcher.py",
+    "main.py",
     "requirements.txt",
+    "Dockerfile",
 ]
-
+exclude = [".*"]
 
 [cerebrium.hardware]
 cpu = 4
@@ -15,7 +16,7 @@ memory = 6.0
 [cerebrium.scaling]
 min_replicas = 1               # Minimum running instances
 max_replicas = 100             # Maximum concurrent instances
-cooldown = 10                  # Cooldown period in seconds
+cooldown = 5                   # Cooldown period in seconds
 replica_concurrency = 2        # The maximum number of requests each replica of an app can accept
 response_grace_period = 43200  # Maximum request lifespan ensuring graceful exit
 scaling_target = 100

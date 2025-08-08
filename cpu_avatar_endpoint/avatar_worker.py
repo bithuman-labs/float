@@ -26,7 +26,7 @@ load_dotenv()
 ROOM = os.getenv("LIVEKIT_ROOM")
 WS_URL = os.getenv("LIVEKIT_WS_URL")
 TOKEN = os.getenv("LIVEKIT_TOKEN")
-BITHUMAN_SECRET = os.getenv("BITHUMAN_API_SECRET")  # TODO: use user's secret?
+BITHUMAN_API_TOKEN = os.getenv("BITHUMAN_API_TOKEN")
 BITHUMAN_IMX_PATH = os.getenv("BITHUMAN_IMX_PATH")
 
 logger = logging.getLogger(f"avatar-{ROOM}")
@@ -193,7 +193,7 @@ async def main():
     logger.info(f"loading video gen model from {BITHUMAN_IMX_PATH}")
 
     runtime = await AsyncBithuman.create(
-        api_secret=BITHUMAN_SECRET,
+        token=BITHUMAN_API_TOKEN,
         model_path=BITHUMAN_IMX_PATH,
     )
 
