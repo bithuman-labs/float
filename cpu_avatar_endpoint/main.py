@@ -92,7 +92,7 @@ class WorkerLauncher:
             return self.workers[room_name]
         except Exception as e:
             logger.exception(f"Failed to launch worker: {e}")
-            return {"status": "error", "message": str(e)}
+            raise e
 
     async def _monitor(self) -> None:
         while True:

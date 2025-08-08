@@ -25,9 +25,9 @@ RUN uv pip install -r requirements.txt && \
 
 # Copy application code
 COPY avatar_worker.py .
-COPY dispatcher.py .
-
+COPY main.py .
 
 
 # Run the application
-ENTRYPOINT ["python", "dispatcher.py", "--host", "0.0.0.0", "--port", "8089"]
+# ENTRYPOINT ["python", "dispatcher.py", "--host", "0.0.0.0", "--port", "8089"]
+# Cerebrium will handle the application startup and function routing
