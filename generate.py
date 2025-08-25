@@ -16,6 +16,8 @@ from dataclasses import dataclass, field
 from queue import Empty, Queue
 from typing import AsyncIterator, Literal
 
+from moviepy import audio
+
 os.environ["NO_ALBUMENTATIONS_UPDATE"] = "1"
 
 import albumentations as A
@@ -413,8 +415,13 @@ class InferenceAgent:
 
             # inference
             data_inference = data.copy()
+            if is_idle:
+                inference_copy = audio_inference.copy()
+                audio_inference = audio_inference + 0.3  # try to make the idle state more stable
+            else:
+                inference_copy = audio_inference
             data_inference["a"] = self.data_processor.process_audio(
-                audio_inference, self.opt.sampling_rate
+                inference_copy, self.opt.sampling_rate
             ).unsqueeze(0)
 
             num_frames = int(len(audio_inference) / sample_per_frame)
@@ -425,9 +432,9 @@ class InferenceAgent:
             for i, (sample, wa) in enumerate(
                 self.G.sample(
                     data=data_inference,
-                    a_cfg_scale=a_cfg_scale,
-                    r_cfg_scale=r_cfg_scale,
-                    e_cfg_scale=e_cfg_scale,
+                    a_cfg_scale=a_cfg_scale if not is_idle else 1.0,
+                    r_cfg_scale=r_cfg_scale if not is_idle else 1.5,
+                    e_cfg_scale=e_cfg_scale if not is_idle else 1.5,
                     emo=chunk.emotion or talking_emotion,
                     nfe=nfe,
                     seed=seed,
@@ -445,7 +452,7 @@ class InferenceAgent:
                     GeneratedFrame(
                         index=global_index,
                         img=img,
-                        audio=audio_inference[
+                        audio=inference_copy[
                             i * sample_per_frame : (i + 1) * sample_per_frame
                         ],
                         idle=is_idle,
