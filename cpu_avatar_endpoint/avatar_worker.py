@@ -74,7 +74,7 @@ async def send_heartbeat(transaction_id: str, api_secret: str, fingerprint: str 
             connector=aiohttp.TCPConnector(verify_ssl=False)
         ) as session:
             async with session.post(
-                f"{api_url}/v1/cloud-runtime/receive-events",
+                f"{api_url}/v2/cloud-runtime/receive-events",
                 headers=headers,
                 json=data
             ) as response:
