@@ -21,7 +21,7 @@ compute = "AMPERE_A10"
 
 [cerebrium.scaling]
 min_replicas = 0               # Minimum running instances
-max_replicas = 3               # Maximum concurrent instances
+max_replicas = 30               # Maximum concurrent instances
 cooldown = 60                  # Cooldown period in seconds
 replica_concurrency = 1        # The maximum number of requests each replica of an app can accept
 response_grace_period = 43200  # Maximum request lifespan ensuring graceful exit
