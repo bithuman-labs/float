@@ -9,8 +9,8 @@ include = [
 
 
 [cerebrium.hardware]
-cpu = 4
-memory = 6.0
+cpu = 6
+memory = 8.0
 
 [cerebrium.scaling]
 min_replicas = 1               # Minimum running instances
