@@ -18,12 +18,13 @@ RUN uv venv /app/venv
 ENV PATH="/app/venv/bin:$PATH"
 
 # Copy requirements and install dependencies
+ENV LIVEKIT_COMMIT=23041a9392467be6954608f893800c0d6fbba4b6
 COPY requirements.txt .
 RUN uv pip install -r requirements.txt && \
     uv pip uninstall livekit-plugins-bithuman && \
-    GIT_LFS_SKIP_SMUDGE=1 uv pip install git+https://github.com/livekit/agents@longc/avatar-pause#subdirectory=livekit-plugins/livekit-plugins-bithuman && \
+    GIT_LFS_SKIP_SMUDGE=1 uv pip install git+https://github.com/livekit/agents@${LIVEKIT_COMMIT}#subdirectory=livekit-plugins/livekit-plugins-bithuman && \
     uv pip uninstall livekit-agents && \
-    GIT_LFS_SKIP_SMUDGE=1 uv pip install git+https://github.com/livekit/agents@longc/avatar-pause#subdirectory=livekit-agents && \
+    GIT_LFS_SKIP_SMUDGE=1 uv pip install git+https://github.com/livekit/agents@${LIVEKIT_COMMIT}#subdirectory=livekit-agents && \
     uv pip uninstall opencv-python && \
     uv pip install opencv-python-headless --no-deps
 
