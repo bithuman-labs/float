@@ -18,20 +18,21 @@ RUN uv venv /app/venv
 ENV PATH="/app/venv/bin:$PATH"
 
 # Copy requirements and install dependencies
-ENV LIVEKIT_COMMIT=23041a9392467be6954608f893800c0d6fbba4b6
 COPY requirements.txt .
 RUN uv pip install -r requirements.txt && \
-    uv pip uninstall livekit-plugins-bithuman && \
-    GIT_LFS_SKIP_SMUDGE=1 uv pip install git+https://github.com/livekit/agents@${LIVEKIT_COMMIT}#subdirectory=livekit-plugins/livekit-plugins-bithuman && \
-    uv pip uninstall livekit-agents && \
-    GIT_LFS_SKIP_SMUDGE=1 uv pip install git+https://github.com/livekit/agents@${LIVEKIT_COMMIT}#subdirectory=livekit-agents && \
     uv pip uninstall opencv-python && \
-    uv pip install opencv-python-headless --no-deps
+    uv pip install opencv-python-headless
+
+# Use dev version of agents and plugins
+ENV LIVEKIT_COMMIT=6994bf5d18de2c72a3e67fa2c70b61b80307d0d5
+RUN uv pip uninstall livekit-agents livekit-plugins-bithuman && \
+    GIT_LFS_SKIP_SMUDGE=1 uv pip install --no-deps git+https://github.com/livekit/agents@${LIVEKIT_COMMIT}#subdirectory=livekit-agents && \
+    GIT_LFS_SKIP_SMUDGE=1 uv pip install --no-deps git+https://github.com/livekit/agents@${LIVEKIT_COMMIT}#subdirectory=livekit-plugins/livekit-plugins-bithuman
+
 
 # Copy application code
 COPY avatar_worker.py .
 COPY dispatcher.py .
-
 
 
 # Run the application

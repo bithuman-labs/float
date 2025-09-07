@@ -214,7 +214,8 @@ async def main():
         
         logger.info(f"retrieve attributes: {room.local_participant.attributes}")
         # Start heartbeat task if user_id and agent_code are available
-        heartbeat_task = await start_heartbeat_task(room.local_participant.attributes, stop_event, runner, room)
+        # heartbeat_task = await start_heartbeat_task(room.local_participant.attributes, stop_event, runner, room)
+        heartbeat_task = None
 
         @room.on("participant_disconnected")
         def on_participant_disconnected(participant: rtc.RemoteParticipant):
