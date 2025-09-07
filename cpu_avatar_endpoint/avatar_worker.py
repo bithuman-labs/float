@@ -181,7 +181,7 @@ async def start_avatar(room: rtc.Room, video_gen: BithumanGenerator) -> AvatarRu
 
     runner = AvatarRunner(
         room,
-        audio_recv=DataStreamAudioReceiver(room, frame_size_ms=10),
+        audio_recv=DataStreamAudioReceiver(room, frame_size_ms=20),
         video_gen=video_gen,
         options=avatar_options,
     )
@@ -195,6 +195,7 @@ async def main():
     runtime = await AsyncBithuman.create(
         api_secret=BITHUMAN_SECRET,
         model_path=BITHUMAN_IMX_PATH,
+        input_buffer_size=2,
     )
 
     try:
@@ -213,7 +214,8 @@ async def main():
         
         logger.info(f"retrieve attributes: {room.local_participant.attributes}")
         # Start heartbeat task if user_id and agent_code are available
-        heartbeat_task = await start_heartbeat_task(room.local_participant.attributes, stop_event, runner, room)
+        # heartbeat_task = await start_heartbeat_task(room.local_participant.attributes, stop_event, runner, room)
+        heartbeat_task = None
 
         @room.on("participant_disconnected")
         def on_participant_disconnected(participant: rtc.RemoteParticipant):
