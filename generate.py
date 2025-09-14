@@ -416,10 +416,18 @@ class InferenceAgent:
             # inference
             data_inference = data.copy()
             if is_idle:
-                inference_copy = audio_inference.copy()
-                audio_inference = audio_inference + 0.3  # try to make the idle state more stable
+                # inference_copy = audio_inference.copy() + 0.3
+
+                # use sin wave (2s)
+                freq = 100
+                inference_copy = (
+                    np.sin(np.linspace(0, 2 * np.pi * freq * 2, len(audio_inference)))
+                    + 1
+                ).astype(np.float32) * 0.2
+                # audio_inference = inference_copy
             else:
                 inference_copy = audio_inference
+
             data_inference["a"] = self.data_processor.process_audio(
                 inference_copy, self.opt.sampling_rate
             ).unsqueeze(0)
@@ -432,7 +440,7 @@ class InferenceAgent:
             for i, (sample, wa) in enumerate(
                 self.G.sample(
                     data=data_inference,
-                    a_cfg_scale=a_cfg_scale if not is_idle else 1.0,
+                    a_cfg_scale=a_cfg_scale if not is_idle else 1.1,
                     r_cfg_scale=r_cfg_scale if not is_idle else 1.5,
                     e_cfg_scale=e_cfg_scale if not is_idle else 1.5,
                     emo=chunk.emotion or talking_emotion,
@@ -452,7 +460,7 @@ class InferenceAgent:
                     GeneratedFrame(
                         index=global_index,
                         img=img,
-                        audio=inference_copy[
+                        audio=audio_inference[
                             i * sample_per_frame : (i + 1) * sample_per_frame
                         ],
                         idle=is_idle,
