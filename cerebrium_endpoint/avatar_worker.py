@@ -1,10 +1,10 @@
 import argparse
-from typing import Dict
 import asyncio
 import logging
 import os
 import sys
 import uuid
+from typing import Dict
 
 import aiohttp
 from dotenv import load_dotenv
@@ -284,6 +284,8 @@ if __name__ == "__main__":
     try:
         return_code = asyncio.run(main())
     except Exception:
+        from traceback import format_exc
+        logger.error(f"Exit with error: {format_exc()}")
         return_code = -1
 
     os._exit(return_code)

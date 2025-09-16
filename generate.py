@@ -391,8 +391,7 @@ class InferenceAgent:
                     chunk = AudioAndControl(flush=True)  # raise a warning
                 else:
                     chunk = AudioAndControl(
-                        audio=np.zeros(sample_per_clip, dtype=np.float32),
-                        emotion=idle_emotion,
+                        audio=np.zeros(sample_per_clip, dtype=np.float32)
                     )
                     audio_buffer = chunk.audio  # fill the buffer with zeros
                     is_idle = True
@@ -443,7 +442,7 @@ class InferenceAgent:
                     a_cfg_scale=a_cfg_scale if not is_idle else 1.1,
                     r_cfg_scale=r_cfg_scale if not is_idle else 1.5,
                     e_cfg_scale=e_cfg_scale if not is_idle else 1.5,
-                    emo=chunk.emotion or talking_emotion,
+                    emo=chunk.emotion or (idle_emotion if is_idle else talking_emotion),
                     nfe=nfe,
                     seed=seed,
                     prev_x=prev_sample,
