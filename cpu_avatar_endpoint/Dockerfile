@@ -33,6 +33,11 @@ RUN uv pip uninstall livekit-agents livekit-plugins-bithuman && \
 # Copy application code
 COPY avatar_worker.py .
 COPY dispatcher.py .
+COPY agent_message_handler.py .
+COPY avatar_actions.py .
+
+# Ensure Python can find our modules
+ENV PYTHONPATH=/app
 
 
 # Run the application
