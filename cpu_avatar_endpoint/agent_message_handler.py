@@ -2,7 +2,7 @@
 """
 Agent Message Handler for Avatar Service
 
-Handles incoming greeting messages from neon-agents.
+Handles incoming greeting messages.
 Triggers avatar wave animation when greetings are received.
 """
 
@@ -20,7 +20,7 @@ logger = logging.getLogger("agent-message-handler")
 
 async def setup_agent_message_handlers(room: rtc.Room, runtime: Any) -> bool:
     """
-    Setup greeting message handler for neon-agents
+    Setup greeting message handler
     
     Args:
         room: LiveKit room instance
