@@ -105,7 +105,7 @@ async def execute_video_control(runtime: Any, control: VideoControl) -> bool:
 # Convenience functions for common actions
 async def trigger_wave_hello(runtime: Any) -> bool:
     """Trigger a mini wave hello animation"""
-    control = VideoControl(action="mini_wave_hello", force_action=True)
+    control = VideoControl(action="mini_wave_hello")
     return await execute_video_control(runtime, control)
 
 
