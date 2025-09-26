@@ -1,5 +1,5 @@
-bithuman==0.5.23
-livekit-agents[bithuman]==1.2.8
+bithuman==0.5.26
+livekit-agents[bithuman]==1.2.11
 uvicorn
 fastapi
 dotenv

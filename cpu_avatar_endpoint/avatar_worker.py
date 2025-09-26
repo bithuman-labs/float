@@ -18,6 +18,8 @@ from livekit.agents.voice.avatar import (
 )
 from livekit.plugins.bithuman.avatar import BithumanGenerator
 
+from agent_message_handler import setup_agent_message_handlers
+
 setup_logging("INFO", devmode=True, console=False)
 
 load_dotenv()
@@ -161,13 +163,24 @@ def text_stream_handler(reader: rtc.TextStreamReader, participant: str):
     pass
 
 
-async def start_avatar(room: rtc.Room, video_gen: BithumanGenerator) -> AvatarRunner:
+async def start_avatar(room: rtc.Room, video_gen: BithumanGenerator, runtime: AsyncBithuman) -> AvatarRunner:
     """Main application logic for the avatar worker"""
     on_behalf_of = room.local_participant.attributes.get(ATTRIBUTE_PUBLISH_ON_BEHALF)
     if not on_behalf_of:
         raise ValueError("on_behalf_of is not set")
 
     room.register_text_stream_handler("lk.transcription", text_stream_handler)
+
+    # Setup agent message handlers for greeting messages and other agent events
+    # This is non-blocking and won't interfere with the main avatar functionality
+    logger.info("Setting up agent message handlers...")
+    rpc_setup_success = await setup_agent_message_handlers(room, runtime)
+    
+    if rpc_setup_success:
+        logger.info("RPC handlers registered successfully")
+        logger.info("Ready to receive greeting messages from agents")
+    else:
+        logger.warning("RPC setup failed - continuing without RPC support")
 
     # Initialize and start worker
     output_width, output_height = video_gen.video_resolution
@@ -209,7 +222,7 @@ async def main():
         await room.connect(WS_URL, TOKEN)
         on_behalf_of = room.local_participant.attributes.get(ATTRIBUTE_PUBLISH_ON_BEHALF)
 
-        runner = await start_avatar(room, video_gen)
+        runner = await start_avatar(room, video_gen, runtime)
         close_runner_task: asyncio.Task[None] | None = None
         
         logger.info(f"retrieve attributes: {room.local_participant.attributes}")

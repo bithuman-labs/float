@@ -1,9 +1,11 @@
 [cerebrium.deployment]
-name = "cpu-avatar-service"
+name = "cpu-avatar-worker"
 include = [
     "Dockerfile",
     "avatar_worker.py",
     "dispatcher.py",
+    "agent_message_handler.py",
+    "avatar_actions.py",
     "requirements.txt",
 ]
 

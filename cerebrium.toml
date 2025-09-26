@@ -1,5 +1,5 @@
 [cerebrium.deployment]
-name = "float-agents-generator"
+name = "gpu-avatar-worker"
 include = [
     "pyproject.toml",
     "uv.lock",
