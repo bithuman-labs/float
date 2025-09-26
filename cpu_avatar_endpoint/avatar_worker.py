@@ -30,6 +30,7 @@ WS_URL = os.getenv("LIVEKIT_WS_URL")
 TOKEN = os.getenv("LIVEKIT_TOKEN")
 BITHUMAN_SECRET = os.getenv("BITHUMAN_API_SECRET")  # TODO: use user's secret?
 BITHUMAN_IMX_PATH = os.getenv("BITHUMAN_IMX_PATH")
+NUM_THREADS = os.getenv("BITHUMAN_NUM_THREADS", 0)
 
 logger = logging.getLogger(f"avatar-{ROOM}")
 
@@ -204,11 +205,18 @@ async def start_avatar(room: rtc.Room, video_gen: BithumanGenerator, runtime: As
 
 async def main():
     logger.info(f"loading video gen model from {BITHUMAN_IMX_PATH}")
+    try:
+        num_threads = int(NUM_THREADS)
+    except ValueError:
+        logger.error(f"invalid NUM_THREADS: {NUM_THREADS}")
+        num_threads = 0
 
+    logger.info(f"using {num_threads} threads")
     runtime = await AsyncBithuman.create(
         api_secret=BITHUMAN_SECRET,
         model_path=BITHUMAN_IMX_PATH,
         input_buffer_size=2,
+        num_threads=num_threads,
     )
 
     try:

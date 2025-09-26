@@ -23,8 +23,8 @@ RUN uv pip install -r requirements.txt && \
     uv pip uninstall opencv-python && \
     uv pip install opencv-python-headless
 
-# Use dev version of agents and plugins
-ENV LIVEKIT_COMMIT=6994bf5d18de2c72a3e67fa2c70b61b80307d0d5
+# Use dev version of agents and plugins (avatar-pause)
+ENV LIVEKIT_COMMIT=ead07e7fadfdc0c0e36422da482a75d5e089d449
 RUN uv pip uninstall livekit-agents livekit-plugins-bithuman && \
     GIT_LFS_SKIP_SMUDGE=1 uv pip install --no-deps git+https://github.com/livekit/agents@${LIVEKIT_COMMIT}#subdirectory=livekit-agents && \
     GIT_LFS_SKIP_SMUDGE=1 uv pip install --no-deps git+https://github.com/livekit/agents@${LIVEKIT_COMMIT}#subdirectory=livekit-plugins/livekit-plugins-bithuman

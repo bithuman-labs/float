@@ -173,10 +173,10 @@ async def handle_launch(
         worker = await launcher.launch_worker(connection_info)
         logger.info(f"Launched avatar worker for room: {connection_info.room_name}")
 
-        return {
-            "status": "success",
-            "message": f"Avatar worker launched for room: {connection_info.room_name}",
-        }
+        # return {
+        #     "status": "success",
+        #     "message": f"Avatar worker launched for room: {connection_info.room_name}",
+        # }
         
         # wait for the worker to exit for async mode
         tic = time.time()
