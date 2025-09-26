@@ -1,9 +1,11 @@
 [cerebrium.deployment]
-name = "cpu-avatar-service"
+name = "cpu-avatar-worker"
 include = [
     "Dockerfile",
     "avatar_worker.py",
     "dispatcher.py",
+    "agent_message_handler.py",
+    "avatar_actions.py",
     "requirements.txt",
 ]
 
@@ -14,7 +16,7 @@ memory = 8.0
 
 [cerebrium.scaling]
 min_replicas = 1               # Minimum running instances
-max_replicas = 500             # Maximum concurrent instances
+max_replicas = 100             # Maximum concurrent instances
 cooldown = 10                  # Cooldown period in seconds
 replica_concurrency = 1        # The maximum number of requests each replica of an app can accept
 response_grace_period = 43200  # Maximum request lifespan ensuring graceful exit

@@ -21,13 +21,23 @@ ENV PATH="/app/venv/bin:$PATH"
 COPY requirements.txt .
 RUN uv pip install -r requirements.txt && \
     uv pip uninstall opencv-python && \
-    uv pip install opencv-python-headless --no-deps
+    uv pip install opencv-python-headless
+
+# Use dev version of agents and plugins (avatar-pause)
+ENV LIVEKIT_COMMIT=ead07e7fadfdc0c0e36422da482a75d5e089d449
+RUN uv pip uninstall livekit-agents livekit-plugins-bithuman && \
+    GIT_LFS_SKIP_SMUDGE=1 uv pip install --no-deps git+https://github.com/livekit/agents@${LIVEKIT_COMMIT}#subdirectory=livekit-agents && \
+    GIT_LFS_SKIP_SMUDGE=1 uv pip install --no-deps git+https://github.com/livekit/agents@${LIVEKIT_COMMIT}#subdirectory=livekit-plugins/livekit-plugins-bithuman
+
 
 # Copy application code
 COPY avatar_worker.py .
 COPY dispatcher.py .
+COPY agent_message_handler.py .
+COPY avatar_actions.py .
 
-
+# Ensure Python can find our modules
+ENV PYTHONPATH=/app
 
 # Run the application
 ENTRYPOINT ["python", "dispatcher.py", "--host", "0.0.0.0", "--port", "8089"]

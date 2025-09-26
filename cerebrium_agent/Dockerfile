@@ -6,9 +6,11 @@ WORKDIR /app
 # Install system dependencies
 # libgl1 libglib2.0-0 
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends libatomic1 git && \
+    apt-get install -y --no-install-recommends libatomic1 git wget && \
     apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
+    rm -rf /var/lib/apt/lists/* && \
+    wget -O /usr/local/bin/dumb-init https://github.com/Yelp/dumb-init/releases/download/v1.2.5/dumb-init_1.2.5_x86_64 && \
+    chmod +x /usr/local/bin/dumb-init
 
 # Install uv
 RUN pip install uv
@@ -33,4 +35,5 @@ COPY avatar.jpg .
 RUN python agent.py download-files
 
 # Run the application
+ENTRYPOINT ["/usr/local/bin/dumb-init", "--"]
 CMD ["python", "agent.py", "start"]

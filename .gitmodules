@@ -1,0 +1,3 @@
+[submodule "3rd_party/fast_liveportrait"]
+	path = 3rd_party/fast_liveportrait
+	url = git@github.com:bithuman-engineering/fast-liveportrait.git
