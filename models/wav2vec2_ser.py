@@ -1,13 +1,13 @@
-import os, torch
-import torch.nn as nn
-import torch.nn.functional as F
-
 from dataclasses import dataclass
 from typing import Optional, Tuple
 
+import torch
+import torch.nn as nn
 from transformers.file_utils import ModelOutput
-from transformers import Wav2Vec2FeatureExtractor
-from transformers.models.wav2vec2.modeling_wav2vec2 import Wav2Vec2PreTrainedModel, Wav2Vec2Model
+from transformers.models.wav2vec2.modeling_wav2vec2 import (
+    Wav2Vec2Model,
+    Wav2Vec2PreTrainedModel,
+)
 
 
 @dataclass
@@ -52,11 +52,7 @@ class Wav2Vec2ForSpeechClassification(Wav2Vec2PreTrainedModel):
     def freeze_feature_extractor(self):
         self.wav2vec2.feature_extractor._freeze_parameters()
 
-    def merged_strategy(
-            self,
-            hidden_states,
-            mode="mean"
-    ):
+    def merged_strategy(self, hidden_states, mode="mean"):
         if mode == "mean":
             outputs = torch.mean(hidden_states, dim=1)
         elif mode == "sum":
@@ -65,20 +61,23 @@ class Wav2Vec2ForSpeechClassification(Wav2Vec2PreTrainedModel):
             outputs = torch.max(hidden_states, dim=1)[0]
         else:
             raise Exception(
-                "The pooling method hasn't been defined! Your pooling mode must be one of these ['mean', 'sum', 'max']")
+                "The pooling method hasn't been defined! Your pooling mode must be one of these ['mean', 'sum', 'max']"
+            )
 
         return outputs
 
     def forward(
-            self,
-            input_values,
-            attention_mask=None,
-            output_attentions=None,
-            output_hidden_states=None,
-            return_dict=None,
-            labels=None,
+        self,
+        input_values,
+        attention_mask=None,
+        output_attentions=None,
+        output_hidden_states=None,
+        return_dict=None,
+        labels=None,
     ):
-        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+        return_dict = (
+            return_dict if return_dict is not None else self.config.use_return_dict
+        )
         outputs = self.wav2vec2(
             input_values,
             attention_mask=attention_mask,
@@ -95,7 +94,9 @@ class Wav2Vec2ForSpeechClassification(Wav2Vec2PreTrainedModel):
             if self.config.problem_type is None:
                 if self.num_labels == 1:
                     self.config.problem_type = "regression"
-                elif self.num_labels > 1 and (labels.dtype == torch.long or labels.dtype == torch.int):
+                elif self.num_labels > 1 and (
+                    labels.dtype == torch.long or labels.dtype == torch.int
+                ):
                     self.config.problem_type = "single_label_classification"
                 else:
                     self.config.problem_type = "multi_label_classification"
@@ -120,5 +121,3 @@ class Wav2Vec2ForSpeechClassification(Wav2Vec2PreTrainedModel):
             hidden_states=outputs.hidden_states,
             attentions=outputs.attentions,
         )
-
-

@@ -16,8 +16,6 @@ from dataclasses import dataclass, field
 from queue import Empty, Queue
 from typing import AsyncIterator, Literal
 
-from moviepy import audio
-
 os.environ["NO_ALBUMENTATIONS_UPDATE"] = "1"
 
 import albumentations as A

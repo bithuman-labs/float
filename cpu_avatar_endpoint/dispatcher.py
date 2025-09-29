@@ -26,7 +26,6 @@ THIS_DIR = Path(__file__).parent.absolute()
 AGENT_MODEL_ROOT = os.getenv("AGENT_MODEL_ROOT", "/persistent-storage/agents")
 
 
-
 @dataclass
 class AvatarConnectionInfo:
     room_name: str
@@ -177,7 +176,7 @@ async def handle_launch(
         #     "status": "success",
         #     "message": f"Avatar worker launched for room: {connection_info.room_name}",
         # }
-        
+
         # wait for the worker to exit for async mode
         tic = time.time()
         return_code = await worker.done_fut

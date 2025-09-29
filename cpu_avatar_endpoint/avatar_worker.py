@@ -5,6 +5,7 @@ import uuid
 from typing import Dict
 
 import aiohttp
+from agent_message_handler import setup_agent_message_handlers
 from bithuman import AsyncBithuman
 from dotenv import load_dotenv
 from livekit import rtc
@@ -17,8 +18,6 @@ from livekit.agents.voice.avatar import (
     DataStreamAudioReceiver,
 )
 from livekit.plugins.bithuman.avatar import BithumanGenerator
-
-from agent_message_handler import setup_agent_message_handlers
 
 setup_logging("INFO", devmode=True, console=False)
 
@@ -38,18 +37,27 @@ logger = logging.getLogger(f"avatar-{ROOM}")
 # -----------------------------------------------------------------------------
 # Heartbeat Functions
 # -----------------------------------------------------------------------------
-async def send_heartbeat(transaction_id: str, api_secret: str, fingerprint: str = None, agent_id: str = None,
-                        url: str = None, key: str = None) -> bool:
+async def send_heartbeat(
+    transaction_id: str,
+    api_secret: str,
+    fingerprint: str = None,
+    agent_id: str = None,
+    url: str = None,
+    key: str = None,
+) -> bool:
     """Send heartbeat event to OneOps API."""
-    
+
     # Get API configuration for Cerebrium neon-services
-    api_url = url or os.getenv("CEREBRIUM_NEON_SERVICES_URL", "https://api.aws.us-east-1.cerebrium.ai/v4/p-5398b08f/neon-services")
+    api_url = url or os.getenv(
+        "CEREBRIUM_NEON_SERVICES_URL",
+        "https://api.aws.us-east-1.cerebrium.ai/v4/p-5398b08f/neon-services",
+    )
     auth_token = key or os.getenv("CEREBRIUM_AUTH_TOKEN")
-    
+
     if not (api_url and auth_token):
         logger.error("Cerebrium neon-services API URL or auth token is not set")
         return False
-    
+
     # Prepare headers
     headers = {
         "Accept": "application/json",
@@ -57,7 +65,7 @@ async def send_heartbeat(transaction_id: str, api_secret: str, fingerprint: str 
         "Authorization": f"Bearer {auth_token}",
         "api-secret": api_secret,
     }
-    
+
     # Prepare data
     data = {
         "event": "beat",
@@ -66,52 +74,54 @@ async def send_heartbeat(transaction_id: str, api_secret: str, fingerprint: str 
             "transaction_id": transaction_id,
             "fingerprint": fingerprint,
             "agent_id": agent_id,
-            "mode": "cpu"
-        }
+            "mode": "cpu",
+        },
     }
-    
+
     try:
         logger.info(f"Sending heartbeat data: {data}")
-        
+
         async with aiohttp.ClientSession(
             connector=aiohttp.TCPConnector(verify_ssl=False)
         ) as session:
             async with session.post(
-                f"{api_url}/v2/cloud-runtime/receive-events",
-                headers=headers,
-                json=data
+                f"{api_url}/v2/cloud-runtime/receive-events", headers=headers, json=data
             ) as response:
                 response_data = await response.json()
                 logger.info(f"Sent heartbeat response: {response_data}")
-                
+
                 # Check for 402 error (payment required)
                 if response.status == 402:
                     logger.error("Heartbeat failed with 402 error - payment required")
                     return "402_error"
-                    
+
                 return response.status == 200
-                
+
     except Exception as e:
         logger.error(f"Error sending heartbeat: {e}")
         return False
 
 
-async def start_heartbeat_task(attributes: Dict[str, str], stop_event: asyncio.Event, 
-                              runner: AvatarRunner, room: rtc.Room) -> asyncio.Task:
+async def start_heartbeat_task(
+    attributes: Dict[str, str],
+    stop_event: asyncio.Event,
+    runner: AvatarRunner,
+    room: rtc.Room,
+) -> asyncio.Task:
     """Start heartbeat task with error handling for 402 errors."""
-    
+
     api_secret = attributes.get("api_secret")
     fingerprint = attributes.get("fingerprint")
     agent_id = attributes.get("agent_id")
 
     # Generate transaction ID
     transaction_id = str(uuid.uuid4())
-    
+
     # Heartbeat interval (60 seconds = 1 minute)
     heartbeat_interval = 60
-    
+
     logger.info(f"Starting heartbeat task with attributes: {attributes}")
-    
+
     async def send_heartbeat_loop():
         """Send heartbeat every interval seconds"""
         try:
@@ -122,9 +132,11 @@ async def start_heartbeat_task(attributes: Dict[str, str], stop_event: asyncio.E
                     fingerprint=fingerprint,
                     agent_id=agent_id,
                 )
-                
+
                 if result == "402_error":
-                    logger.error("Heartbeat returned 402 error - stopping runner and disconnecting")
+                    logger.error(
+                        "Heartbeat returned 402 error - stopping runner and disconnecting"
+                    )
                     # Stop the runner
                     await runner.aclose()
                     # Disconnect from room
@@ -134,7 +146,7 @@ async def start_heartbeat_task(attributes: Dict[str, str], stop_event: asyncio.E
                     break
                 elif not result:
                     logger.warning("Failed to send heartbeat")
-                    
+
                 await asyncio.sleep(heartbeat_interval)
         except asyncio.CancelledError:
             logger.info("Heartbeat task cancelled")
@@ -145,7 +157,7 @@ async def start_heartbeat_task(attributes: Dict[str, str], stop_event: asyncio.E
     # Start heartbeat task
     heartbeat_task = asyncio.create_task(send_heartbeat_loop())
     logger.info("Heartbeat task started successfully")
-    
+
     return heartbeat_task
 
 
@@ -164,7 +176,9 @@ def text_stream_handler(reader: rtc.TextStreamReader, participant: str):
     pass
 
 
-async def start_avatar(room: rtc.Room, video_gen: BithumanGenerator, runtime: AsyncBithuman) -> AvatarRunner:
+async def start_avatar(
+    room: rtc.Room, video_gen: BithumanGenerator, runtime: AsyncBithuman
+) -> AvatarRunner:
     """Main application logic for the avatar worker"""
     on_behalf_of = room.local_participant.attributes.get(ATTRIBUTE_PUBLISH_ON_BEHALF)
     if not on_behalf_of:
@@ -176,7 +190,7 @@ async def start_avatar(room: rtc.Room, video_gen: BithumanGenerator, runtime: As
     # This is non-blocking and won't interfere with the main avatar functionality
     logger.info("Setting up agent message handlers...")
     rpc_setup_success = await setup_agent_message_handlers(room, runtime)
-    
+
     if rpc_setup_success:
         logger.info("RPC handlers registered successfully")
         logger.info("Ready to receive greeting messages from agents")
@@ -228,11 +242,13 @@ async def main():
 
         room = rtc.Room()
         await room.connect(WS_URL, TOKEN)
-        on_behalf_of = room.local_participant.attributes.get(ATTRIBUTE_PUBLISH_ON_BEHALF)
+        on_behalf_of = room.local_participant.attributes.get(
+            ATTRIBUTE_PUBLISH_ON_BEHALF
+        )
 
         runner = await start_avatar(room, video_gen, runtime)
         close_runner_task: asyncio.Task[None] | None = None
-        
+
         logger.info(f"retrieve attributes: {room.local_participant.attributes}")
         # Start heartbeat task if user_id and agent_code are available
         # heartbeat_task = await start_heartbeat_task(room.local_participant.attributes, stop_event, runner, room)
@@ -271,11 +287,11 @@ async def main():
             return 1
 
         await stop_event.wait()
-        
+
         # Clean up heartbeat task
         if heartbeat_task:
             await cleanup_heartbeat_task(heartbeat_task)
-        
+
         return 0
     finally:
         runtime.cleanup()
