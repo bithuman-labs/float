@@ -52,21 +52,36 @@ async def setup_agent_message_handlers(room: rtc.Room, runtime: Any) -> bool:
                 logger.info(f"Processing greeting from agent {agent_code} (user: {user_id}, model: {model})")
                 logger.info(f"Message: {message[:100]}...")
                 
-                # Trigger wave animation if runtime is available
+                # Trigger wave animation if runtime is available (with enhanced debounce protection)
                 animation_success = False
+                animation_debounced = False
                 if runtime:
                     try:
-                        animation_success = await trigger_wave_hello(runtime)
+                        # Extract greeting timestamp and create message ID for duplicate detection
+                        greeting_timestamp = greeting_data.get("timestamp", 0)
+                        # Use deduplication key from core-agent-worker if available, otherwise create one
+                        message_id = greeting_data.get("message_dedup_key") or f"{agent_code}:{user_id}:{greeting_timestamp}"
+                        
+                        # Use enhanced cooldown (5.0s) and message deduplication to prevent broadcast spam
+                        # This protects against multiple avatar workers receiving the same broadcast
+                        animation_success = await trigger_wave_hello(runtime, cooldown=5.0, message_id=message_id)
                         if animation_success:
-                            logger.info("Successfully triggered mini wave hello animation")
+                            logger.info(f"🎭 Successfully triggered mini wave hello animation (timestamp: {greeting_timestamp})")
                         else:
-                            logger.warning("Failed to trigger wave animation")
+                            # Check if it was debounced or actually failed
+                            from avatar_actions import get_gesture_cooldown_status
+                            cooldown_status = get_gesture_cooldown_status("mini_wave_hello")
+                            if cooldown_status["time_since_last"] < 5.0:
+                                animation_debounced = True
+                                logger.info(f"🚫 Wave animation debounced - last triggered {cooldown_status['time_since_last']:.1f}s ago (broadcast protection)")
+                            else:
+                                logger.warning("❌ Failed to trigger wave animation - runtime error")
                     except Exception as e:
-                        logger.error(f"Error triggering animation: {str(e)}")
+                        logger.error(f"💥 Error triggering animation: {str(e)}")
                 else:
-                    logger.warning("Runtime not available - skipping animation")
+                    logger.warning("⚠️ Runtime not available - skipping animation")
                 
-                # Log analytics
+                # Log analytics with enhanced debounce information
                 analytics_data = {
                     "event_type": "avatar_greeting_received",
                     "timestamp": datetime.utcnow().isoformat(),
@@ -74,15 +89,22 @@ async def setup_agent_message_handlers(room: rtc.Room, runtime: Any) -> bool:
                     "agent_code": agent_code,
                     "user_id": user_id,
                     "model": model,
-                    "animation_triggered": animation_success
+                    "greeting_timestamp": greeting_timestamp,
+                    "message_id": message_id,
+                    "animation_triggered": animation_success,
+                    "animation_debounced": animation_debounced,
+                    "debounce_protection": "enhanced",
+                    "broadcast_protection": "enabled"
                 }
                 logger.info(f"[ANALYTICS] {json.dumps(analytics_data)}")
                 
-                # Return success response
+                # Return success response with debounce information
                 response = {
                     "status": "success",
                     "message": "Greeting processed successfully",
                     "animation_triggered": animation_success,
+                    "animation_debounced": animation_debounced,
+                    "debounce_protection": "enabled",
                     "timestamp": datetime.utcnow().isoformat(),
                     "service": "avatar_worker"
                 }
