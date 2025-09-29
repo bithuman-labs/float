@@ -1,4 +1,4 @@
-bithuman==0.6.0
+bithuman==0.6.1
 livekit-agents[bithuman]==1.2.11
 uvicorn
 fastapi
